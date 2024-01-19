@@ -1,0 +1,299 @@
+---
+# multilingual page pair id, this must pair with translations of this page. (This name must be unique)
+lng_pair: id_sui
+title: Sui 学习笔记
+
+# post specific
+# if not specified, .name will be used from _data/owner/[language].yml
+author: Mr. Green's Workshop
+# multiple category is not supported
+category: 公链
+# multiple tag entries are possible
+tags: [公链, Move]
+# thumbnail image for post
+img: ":post_pic1.jpg"
+# disable comments on this page
+#comments_disable: true
+
+# publish date
+date: 2024-01-19 10:00:00 +0800
+
+# seo
+# if not specified, date will be used.
+#meta_modify_date: 2022-02-10 08:11:06 +0900
+# check the meta_common_description in _data/owner/[language].yml
+#meta_description: ""
+
+# optional
+# please use the "image_viewer_on" below to enable image viewer for individual pages or posts (_posts/ or [language]/_posts folders).
+# image viewer can be enabled or disabled for all posts using the "image_viewer_posts: true" setting in _data/conf/main.yml.
+#image_viewer_on: true
+# please use the "image_lazy_loader_on" below to enable image lazy loader for individual pages or posts (_posts/ or [language]/_posts folders).
+# image lazy loader can be enabled or disabled for all posts using the "image_lazy_loader_posts: true" setting in _data/conf/main.yml.
+#image_lazy_loader_on: true
+# exclude from on site search
+#on_site_search_exclude: true
+# exclude from search engines
+#search_engine_exclude: true
+# to disable this page, simply set published: false or delete this file
+#published: false
+---
+
+<!-- outline-start -->
+
+Sui 学习笔记
+
+<!-- outline-end -->
+
+# Sui 
+
+- 区块链浏览器 
+    - https://suiexplorer.com/
+    - https://suiscan.xyz/
+    - https://suivision.xyz/
+- 源码 https://github.com/MystenLabs/sui/
+- 文档 https://docs.sui.io/guides
+- 中文文档 https://docs-zh.sui-book.com/
+- Intro to Sui https://sui.io/intro-to-sui
+- Sui Course https://suicourse.xyz/
+
+Sui 创新点：
+- Object-centric Design（以对象为中心）：数据保存在 objects 中，objects 只有其 owner 可以修改。
+- Programmable Transaction Blocks（可编程交易）：可以将一笔交易的输出为另一笔交易的输入。这样在不写智能合约的情况下可以构造出一些特殊的逻辑。区块中一组交易保持原子性。
+- Transaction Processing（交易并行处理）：对于互不影响的交易可以并行处理。
+- Horizontal Scalability（横向可扩展）：网络层面降低成本
+- Move：使 Move 智能合约，语法类似 rust。
+
+相关小知识：
+- Sui 源自日语词 [すい (sui)](https://zh.wiktionary.org/wiki/Category:%E5%AF%AB%E4%BD%9C%E3%80%8C%E6%B0%B4%E3%80%8D%E8%AE%80%E4%BD%9C%E3%80%8C%E3%81%99%E3%81%84%E3%80%8D%E7%9A%84%E6%97%A5%E8%AA%9E%E8%A9%9E)，意义为水。[发音](https://zh.forvo.com/word/%E6%B0%B4_mizu%2C_sui/#ja)
+- Gas 代币 SUI，最小粒度 MIST（ 1 SUI = 1e9 MIST）。可质押参与验证（APY 3.7%）。
+- Sui 地址为 32 bytes，常用 16 进制表示。
+- Sui 交易上原生支持 sponsor 进行 gas fee 代付。sponsor 和 sender 共同签名发送交易。
+- 原生支持[多签](https://docs.sui.io/concepts/cryptography/transaction-auth/multisig)。
+
+# 基本概念
+
+## 账户
+
+可以使用 [Metamask Sui Snap](https://snaps.metamask.io/snap/npm/kunalabs-io/sui-metamask-snap/) 作为 Sui 钱包。
+
+Sui 上地址为 32 bytes。示例：
+
+```
+0x2bf6a3a5ff499df04c6ab3e3b2c0be9879b8613e70dbc2c4481c2324bb0aaba3
+```
+
+可以在 [suiexplorer](https://suiexplorer.com/address/0x2bf6a3a5ff499df04c6ab3e3b2c0be9879b8613e70dbc2c4481c2324bb0aaba3?network=mainnet) 上查看账户余额等信息。
+
+Sui 支持多种签名算法、还支持多签（BLS12-377, BLS12-381, Ed25519, ECDSA secp256k1）。地址由[公钥和标志位一起 BLAKE2b hash 得到](https://docs.sui.io/concepts/cryptography/transaction-auth/keys-addresses#address-format)。
+
+## Object
+
+Sui 使用 Object-centric Design 的设计思路。所有操作均是围绕 Object 展开。Object 中保存着各类链上数据，且有对应的 ownership。在 Object 中存储数据要支付对应的费用。
+
+Sui 区块链浏览器中可以查看每个地址下持有 object 的情况。
+
+比如某账户持有链原生代币 SUI，实际就是该账户下持有若干 SUI objects。如下：
+
+![image](https://note.youdao.com/yws/public/resource/1d1c261a5975f29d8264ee99cf73ba93/xmlnote/WEBRESOURCEf08e094d0bfbf4c40afa58ffa8732154/161544)
+
+
+每个 object 代表一定的 SUI balance。在浏览器中查看其中一个 object 如下：
+
+![image](https://note.youdao.com/yws/public/resource/1d1c261a5975f29d8264ee99cf73ba93/xmlnote/WEBRESOURCE3e42c2f659e673fb8dc3fbb7800a6801/161539)
+
+相关字段解释：
+- Object ID：该 object 的唯一标识。使用 32 bytes。与地址长度一致，但彼此不重合。
+- Type： 表示 object 的类型，这里为 `0x0000…0002::coin::Coin<0x0000…0002::sui::SUI>`。表示是 Coin 类型。注意类型在 Sui 体系中似乎是作为元数据保存的，许多数据对象会有明确的字段来保存他的类型，并非只是一种隐式的概念。
+- Version：表示 object 的版本，每次 object 被修改，该 version 都会增加，但不是每次加 1。
+- Last Transaction Block Digest：最近一次修改该 object 的交易。
+- Owner：该 object 的 owner 地址。
+
+不同 object 中有不同的字段（Fields）。其中 id 是均存在的，表示其唯一标识。
+
+SUI Coin Object 中内部又有一个 `BALANCE<SUI>` 类型的 object，保存着具体的金额。Object 对象的所有权可以 transfer，将 SUI object 转移则对应于 SUI 转账。
+
+一些复杂的 object 还可能有 dynamic fields，指向其他 object id。
+
+Object 除了属于固定的 owner 外（这个 owner 可以是普通账户、package 或其他 object），也可以是 shared，表示所有人均可以访问和修改；还可以是 immutable 表示所有人均不可修改。
+
+即使 Object 属于 owner，也并不意味着 owner 可以任意修改 Object 中的属性。每个 Object 有自己对应的类型（Move 中定义的 struct），因此只能被定义它的 package 所修改。因此 owner 实际也只能通过 package 中的 public function 对 object 进行有限的数据修改。
+
+## 交易
+
+这是一笔 SUI 转账交易[5xXQkPewG6guhQGVHevkrGmw1AjRq4cXadqLL8uDYyhX](https://suiscan.xyz/mainnet/tx/5xXQkPewG6guhQGVHevkrGmw1AjRq4cXadqLL8uDYyhX)。
+
+Sui 支持 Programmable Transaction。一笔交易是多个 call 组成。后一个 call 的输入可以是前一个 call 的输出。从而实现简单的编程逻辑。
+
+对于 SUI 转账交易来说包括两个动作：
+- 调用 SplitCoins 方法，参数是 GasCoin （即 SUI）和转账金额，将 sender 的 SUI Coin object 分割成两部分。
+- 调用 TransferObjects 方法，参数是前面的输出和 receiver 地址，将创建的新 object 转给 receiver，实现转账。
+
+在 Object Change 一栏中可以看到 object 创建与修改的情况。
+
+可以注意到 object 修改后版本号会增加。另外需要注意的是，一笔交易中的 object 版本号均会更新成相同的值，而非各自更新。
+
+另外交易中设定了 `Gas Payment Object`，根据 `Gas Object Owner` 不同，可以实现 gas 代付机制。
+
+下面看一笔复杂一点的交易，[HnA5VD6LmoeWdkVAMYfU7wtydfwfaTxxETBhCGgZtyM1](https://suiscan.xyz/mainnet/tx/HnA5VD6LmoeWdkVAMYfU7wtydfwfaTxxETBhCGgZtyM1) 是一笔 DEX Swap 交易。值得注意的点包括：
+- 合约使用调用 MoveCall 方法。本例中调用的方法为 `0x9632f61a796fc54952d9151d80b319e066cba5498a27b495c99e113db09726b1::swap_router::swap_a_b`。与以太坊不同的是，合约方法调用除了常规的参数外，还有 `type_arguments` 即类型参数。有点类似 C++ 中的泛型机制。具体可以看 Move 相关的文档。
+- Sui 使用类似以太坊的 event 机制来输出一些交易过程的信息。
+
+交易的 sender 需要有交易中 input 中的 object 的访问权限。即
+- object owner 是 sender
+- object 是 shared 的
+- object 是 immutable 的
+
+
+
+## Package
+
+Package 即类似以太坊的智能合约概念。[0x9632f61a796fc54952d9151d80b319e066cba5498a27b495c99e113db09726b1](https://suiexplorer.com/object/0x9632f61a796fc54952d9151d80b319e066cba5498a27b495c99e113db09726b1?network=mainnet) 就是一个 Package。
+
+Package 实际是一种 immutable 的 object。因此可使用 object id 唯一标识。另外由于是 immutable 的，代码部署后即不可以更改。Package 也有 version，开发者发布新的 Package 时 version 加 1，但需要注意此时 object id 也会变化。旧的合约仍存在链上可被调用。需要开发者自行维护 version 检查与更新逻辑。
+
+Move 合约编译成 package bytecode 后可以部署到网络上。开发者根据功能划分又可在 package 中区别为不同的 module。每个 module 可以对外公开 function 允许外部调用。其中 module 和 function 直接使用字符串索引。区块链浏览器上也允许直接对公开的方法进行调用。
+
+由于 Move bytecode 比较简单，大多数区块链浏览器自带反汇编功能，可以直接查看原始 bytecode。另外接口定义似乎也作为元数据保存在链上，不需要像以太坊一样在链下使用 ABI 进行辅助。
+
+Sui 网络上已经部署了一些系统 package 供开发者使用。这些 package 的 Publisher 是	`0x00..00` 地址。系统 package 包括：
+- `std` 地址 [0x1](https://suiexplorer.com/object/0x0000000000000000000000000000000000000000000000000000000000000001?network=mainnet)，一些基础类型等。
+- `sui` 地址 [0x2](https://suiexplorer.com/object/0x0000000000000000000000000000000000000000000000000000000000000002?network=mainnet)，Sui 核心模块，包括 object, transfer, token, tx_context, package 等，几乎所有合约都要使用。
+- `sui_system` 地址 [0x3](https://suiexplorer.com/object/0x0000000000000000000000000000000000000000000000000000000000000003?network=mainnet)，Staking, Validator 等相关内容。
+
+这些 package 是经过开源验证的，可以在区块链浏览器中查看源码。
+
+[这里](https://suivision.xyz/packages)可以查看近期调用比较多的 package, module, function。
+
+## package 升级
+
+package 是[可升级](https://docs.sui.io/concepts/sui-move-concepts/packages/upgrade) 的。但需要保证升级前后兼容。
+- public function 和 struct 定义不变
+- 可添加新 function 和 struct 
+- function 实现可修改
+- non-public（包括 friend 和 entry）定义可修改
+
+升级需要持有 UpgradeCap。升级后 version + 1，package id 改变。
+
+相关命令
+```
+# 发布 package
+sui client publish --gas-budget <GAS-BUDGET-AMOUNT>
+
+# 查找某个地址是否有升级权限（UpgradeCap）
+sui client objects  $OWNER | grep UpgradeCap -A 2 -B 4
+
+# 升级 package
+sui client upgrade --gas-budget <GAS-BUDGET-AMOUNT> --upgrade-capability <UPGRADE-CAP-ID>
+```
+
+这是一个例子：[Package: Turbos Finance 2 0xeb92..ee6d](https://suiscan.xyz/mainnet/object/0xeb9210e2980489154cc3c293432b9a1b1300edd0d580fe2269dd9cda34baee6d) 升级为 [Package: Turbos Finance 3 0x9632..26b1](https://suiscan.xyz/mainnet/object/0x9632f61a796fc54952d9151d80b319e066cba5498a27b495c99e113db09726b1) 的[交易](https://suivision.xyz/txblock/71RiMs79kj9ruCeo6D1QN8h4tAGiZWXPsj8QfKiACRSa)
+- 由持有 [0x2::package::UpgradeCap]( https://suiscan.xyz/mainnet/object/0x00a8e96385ed222c04fab9a95c9e12307e2a7b4375551338289101e78d193eee) 的 [Owner](https://suiscan.xyz/mainnet/account/0x0a475e3bd09b7e38ef8e200dcf81b55630f7f8c93f4465005316002184051ea2) 发起交易
+- 交易内容为
+    - MoveCall `sui::package::authorize_upgrade`，由 UpgradeCap 获得 UpgradeTicket
+    - Upgrade `0xeb92..ee6d` 使用 UpgradeTicket 创建新的 Package object，并返回 UpgradeReceipt
+    - MoveCall `sui::package::commit_upgrade` 使用 UpgradeReceipt 更新 UpgradeCap。
+
+更新完成后 `0xeb92..ee6d`（Version 7）中 bytecode 中所引用的 package id 将变为 `0x9632..26b1` （Version 8）。这一点在区块链浏览器中可以看到。如 Version 7 更新后的 bytecode 反汇编代码如下：
+```
+// Move bytecode v6
+module 91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1.swap_router {
+  use 0000000000000000000000000000000000000000000000000000000000000002::clock;
+  use 0000000000000000000000000000000000000000000000000000000000000002::coin;
+  use 0000000000000000000000000000000000000000000000000000000000000002::tx_context;
+  use 91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1::pool;
+
+  ...
+```
+所有被更新过的 package，其 package 引用会与自身 package id 不同。以此可以用来辨别 package 是否有更新版本。
+
+新旧使用相同的 package 引用，就使得新旧版本可以处理同样的 object。这样就保证了新版本 object 对旧版本的兼容。
+
+package 中的代码是不可修改的，其中具体的 bytecode 仍保持旧版不变。因此更新新版本并不会使旧版本失效。package 内部可以通过特殊的代码逻辑实现此功能。典型的一种实现方式如下：
+
+```
+struct Versioned has key, store {
+    id: UID,
+    version: u64,
+}
+
+const VERSION: u64 = 1;
+
+public fun foo(versioned: &Versioned) {
+    assert!(versioned.version == VERSION, EWrongVersion);
+    // ...
+}
+```
+定义一个 object 保存当前版本号。并在代码中检查 object 中的版本与代码中的常量版本号是否一致。当 package 更新后，管理员可以将 Versioned object 中的 version 更新为 2。此时旧版 package 中的 foo 函数运行将报 EWrongVersion 错误。注意，这种方案要求每个函数都额外增加一个 Versioned 参数，并在函数执行前进行版本检查。
+
+# 命令行
+
+参考：https://docs.sui.io/references/cli
+
+安装
+```sh
+# 使用 homebrew
+brew tap mystenlabs/tap
+brew install mystenlabs/tap/sui
+
+# 或直接从源码安装
+cargo install --locked --git https://github.com/MystenLabs/sui.git --branch mainnet sui
+```
+
+使用
+```sh
+# 切换网络
+sui client new-env --alias mainnet --rpc https://fullnode.mainnet.sui.io:443
+sui client switch --env mainnet
+
+# 查看地址的 objects
+sui client objects $ADDR
+
+# 查看某个 object
+sui client object $OBJECT
+
+# 进行方法调用
+sui client call --gas-budget <GAS-AMOUNT> --package $PACKAGE --module $MODULE --function $FUNC --args $ARG1 $ARG2
+```
+
+Move 相关
+```
+# 创建 move project
+sui move new $PACKAGE
+```
+
+
+# RPC
+
+RPC 文档见 https://docs.sui.io/sui-api-ref
+
+最关键的发送交易 RPC 方法为 [sui_executeTransactionBlock](https://docs.sui.io/sui-api-ref#sui_executetransactionblock)
+
+请求示例为 
+```
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "sui_executeTransactionBlock",
+  "params": [
+    // 交易的 binary data，使用 Base64 编码
+    "AAACACBqEB6aOvXIBwES+Ahkizbvv43uihqC3kbZUE6WoRCKFwEAjvdvVsOZYzousxC8qRJOXy84znOeqsu2YAaIgE4HhEgCAAAAAAAAACB9w3+ufZMpihJFwxtCBojBaGy00TVtFxgN2C6TpIPFqwEBAQEBAAEAAAS0l6kWtGVmCaf6gnoJGE1vR2gdO6dM4NejbGSysfiHAZ+Q9/hmzCnfsdpjc86U+dldylpA9OF2mRjuv5+64AvTAgAAAAAAAAAgjleHL0UiRGjh/BfIFHCJ3EMY/dQA22c2TvNQyVJnbYUEtJepFrRlZgmn+oJ6CRhNb0doHTunTODXo2xksrH4hwoAAAAAAAAAoIYBAAAAAAAA",
+    [
+    // 签名，可能有多个，使用 Base64 编码
+      "AKD4XdltkCyBi1Heb4EJJ3lzuV3F4u7+CYeaE+Fd7qXpaT17yd4tHWjMf4CWq3TuXBLxTpkc2MV39P6p7eMV8QnqvbuA0Q1Bqu4RHV3JPpqmH+C527hWJGUBOZN1j9sg8w=="
+    ],
+    {
+      "showInput": true,
+      "showRawInput": true,
+      "showEffects": true,
+      "showEvents": true,
+      "showObjectChanges": true,
+      "showBalanceChanges": true
+    },
+    "WaitForLocalExecution"
+  ]
+}
+```
+
+交易 binary data 使 [Binary Canonical Serialization, BCS](https://github.com/diem/bcs) 进行序列化
+
