@@ -41,54 +41,42 @@ lng_pair: id_links
 ###########################################################
 page_data:
   main:
-    header: "Links"
-    info: "Your Links page description."
+    header: "Blockchain utilities"
+    info: "For Blockchain developers and hackers."
 
   # To change order of the Categories, simply change order. (you don't need to change list order.)
   category:
-    - title: "JekyII / Liquid"
-      type: id_jekyiiliquid
-      color: "gray"
-    - title: "Web Design"
-      type: id_webdesign
+    - title: "Miscellaneous"
+      type: id_misc
       color: "#F4A273"
-    - title: "Programming"
-      type: id_programming
+    - title: "Transaction decoder"
+      type: id_txdec
       color: "#62b462"
+    - title: "TODO"
+      type: id_todo
+      color: "gray"
 
   list:
-    -
-    # programming
-    - type: id_programming
-      title: "Stack OverFlow"
-      url: "https://stackoverflow.com/"
-      info: "Stack Overflow is a question and answer website for professional and enthusiastic programmers."
+    - type: id_txdec
+      title: "Tenderly"
+      url: "https://dashboard.tenderly.co/"
+      info: "Tenderly is an all-in-one Web3 development platform that accelerates smart contract development and provides a fully integrated developer experience."
+    - type: id_txdec
+      title: "Phalcon Explorer"
+      url: "https://phalcon.blocksec.com/explorer"
+      info: "Phalcon Explorer is a powerful transaction explorer supporting Transaction Debugging and Transaction Simulation."
+    - type: id_txdec
+      title: "Openchain Transaction Tracer"
+      url: "https://openchain.xyz/trace"
+      info: "Transaction trace viewer coded by samczsun. Storage difference is supported."
 
-    # jekyiiliquid
-    - type: id_jekyiiliquid
-      title: "Jekyll"
-      url: "https://jekyllrb.com/"
-      info: "Transform your plain text into static websites and blogs."
-    - type: id_jekyiiliquid
-      title: "Jekyll Cheat Sheet"
-      url: "https://cloudcannon.com/community/jekyll-cheat-sheet/"
-      info: "There are so many Jekyll variables and filters to remember and it can be tricky to keep it all in your head. This cheat sheet serves as a quick reference of everything Jekyll can do."
-    - type: id_jekyiiliquid
-      title: "Liquid for Designers"
-      url: "https://github.com/Shopify/liquid/wiki/Liquid-for-Designers"
-      info: "Liquid for Designers wiki on GitHub."
-    - type: id_jekyiiliquid
-      title: "Liquid for Programmers"
-      url: "https://github.com/Shopify/liquid/wiki/Liquid-for-Programmers"
-      info: "Liquid for Programmers wiki on GitHub."
-    - type: id_jekyiiliquid
-      title: "Liquid Reference"
-      url: "https://shopify.dev/api/liquid/"
-      info: "Liquid is a template language created by Shopify and written in Ruby. It is now available as an open source project on GitHub."
+    - type: id_todo
+      title: "TODO"
+      url: "https://#todo/"
+      info: "Todo"
 
-    # webdesign
-    - type: id_webdesign
-      title: "W3Schools"
-      url: "https://www.w3schools.com/"
-      info: "W3Schools offers free online tutorials, references and exercises in all the major languages of the web. Covering popular subjects like HTML, CSS, JavaScript, Python, SQL, Java, and many more."
+    - type: id_misc
+      title: "misc"
+      url: "https://misc/"
+      info: "misc"
 ---
