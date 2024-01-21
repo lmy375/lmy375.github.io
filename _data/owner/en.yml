@@ -13,13 +13,13 @@ name: "Moon Liang"
 # home page top header texts
 home:
   # you can also use $site_brand, $site_greetings, $site_welcome in line1 and line2 for replacing texts.
-  top_header_line1: "Ad astra abyssosque!"
+  top_header_line1: "Ad Astra Abyssosque!"
   # if commented, top header will be a single line
   # top_header_line2: "$site_brand"
 
 # about page sub title
 about:
-  sub_title: "Nothing left"
+  sub_title: "Coder, Hacker, ACG fun"
 
 # if you don't want to add copyright year, comment or leave it blank.
 # the year during which the claimed copyright for the work was first asserted.

@@ -71,6 +71,7 @@ page_data:
     - type: id_txdec
       title: "Dedaub"
       url: "https://app.dedaub.com/ethereum"
+      info: "Dedaub transaction decoders."
     - type: id_txdec
       title: "Sentio"
       url: "https://app.sentio.xyz/explorer"
@@ -78,11 +79,17 @@ page_data:
     - type: id_txdec
       title: "Eigenphi"
       url: "https://tx.eigenphi.io/analyseTransaction"
+      info: "Eigenphi transaction decoders."
     - type: id_txdec
       title: "EthTx"
       url: "https://ethtx.info/"
       info: "The most classic one. Core code open-sourced."
    
+   
+    - type: id_re
+      title: "Dedaub"
+      url: "https://app.dedaub.com/decompile"
+      info: "Dedaub decompiler."
     - type: id_re
       title: "Guess ABI"
       url: "https://abi.w1nt3r.xyz/"
@@ -111,12 +118,15 @@ page_data:
     - type: id_data
       title: "Dune"
       url: "https://dune.com/"
+      info: "Dune is a web-based platform that allows you to query public blockchain data and aggregate it into beautiful dashboards."
     - type: id_data
       title: "Flipside"
       url: "https://flipsidecrypto.xyz/"
+      info: "Flipside generates the most reliable and comprehensive blockchain data and provides tools for builders."
     - type: id_data
       title: "Chainbase"
       url: "https://console.chainbase.com/"
+      info: "Chainbase Data Cloud lets you run your low-latency queries through an endpoint to leverage all our indexed datasets for your custom needs."
 
     - type: id_misc
       title: "Upgradehub"
@@ -143,7 +153,4 @@ page_data:
       url: "https://dexscreener.com/"
       info: "Realtime DEX analytics & charts"
       
-
-      
-     
 ---
