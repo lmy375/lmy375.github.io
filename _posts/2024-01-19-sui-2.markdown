@@ -3,8 +3,7 @@ lng_pair: id_sui_2
 title: Sui 实用学习笔记 (2) - Move
 category: 公链
 tags: [公链, Move]
-
-# publish date
+img: ":sui_logo.png"
 date: 2024-01-19 10:00:00 +0800
 
 ---

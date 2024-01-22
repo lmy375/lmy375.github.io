@@ -11,7 +11,7 @@ category: 公链
 # multiple tag entries are possible
 tags: [公链, Move]
 # thumbnail image for post
-# img: ":post_pic1.jpg"
+img: ":sui_logo.png"
 # disable comments on this page
 #comments_disable: true
 
@@ -95,12 +95,12 @@ Sui 区块链浏览器中可以查看每个地址下持有 object 的情况。
 
 比如某账户持有链原生代币 SUI，实际就是该账户下持有若干 SUI objects。如下：
 
-![image](:sui_pic1.jpg)
+![image](:sui_pic1.png)
 
 
 每个 object 代表一定的 SUI balance。在浏览器中查看其中一个 object 如下：
 
-![image](:sui_pic2.jpg)
+![image](:sui_pic2.png)
 
 相关字段解释：
 - Object ID：该 object 的唯一标识。使用 32 bytes。与地址长度一致，但彼此不重合。
