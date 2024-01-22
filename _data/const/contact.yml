@@ -40,4 +40,4 @@ facebook:
 # add your new contact
 wechat:
   icon: "fa fa-wechat"
-  url: "/assets/img/about/qrcode.jpg"
+  url: "/assets/img/about"
