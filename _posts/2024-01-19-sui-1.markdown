@@ -1,17 +1,17 @@
 ---
 # multilingual page pair id, this must pair with translations of this page. (This name must be unique)
-lng_pair: id_sui
-title: Sui 学习笔记
+lng_pair: id_sui_1
+title: Sui 实用学习笔记 (1) - 概述
 
 # post specific
 # if not specified, .name will be used from _data/owner/[language].yml
-author: Mr. Green's Workshop
+# author: Mr. Green's Workshop
 # multiple category is not supported
 category: 公链
 # multiple tag entries are possible
 tags: [公链, Move]
 # thumbnail image for post
-img: ":post_pic1.jpg"
+# img: ":post_pic1.jpg"
 # disable comments on this page
 #comments_disable: true
 
@@ -41,7 +41,7 @@ date: 2024-01-19 10:00:00 +0800
 
 <!-- outline-start -->
 
-Sui 学习笔记
+Sui 基本知识：address, object, package。命令行与 package。
 
 <!-- outline-end -->
 
@@ -95,12 +95,12 @@ Sui 区块链浏览器中可以查看每个地址下持有 object 的情况。
 
 比如某账户持有链原生代币 SUI，实际就是该账户下持有若干 SUI objects。如下：
 
-![image](https://note.youdao.com/yws/public/resource/1d1c261a5975f29d8264ee99cf73ba93/xmlnote/WEBRESOURCEf08e094d0bfbf4c40afa58ffa8732154/161544)
+![image](:sui_pic1.jpg)
 
 
 每个 object 代表一定的 SUI balance。在浏览器中查看其中一个 object 如下：
 
-![image](https://note.youdao.com/yws/public/resource/1d1c261a5975f29d8264ee99cf73ba93/xmlnote/WEBRESOURCE3e42c2f659e673fb8dc3fbb7800a6801/161539)
+![image](:sui_pic2.jpg)
 
 相关字段解释：
 - Object ID：该 object 的唯一标识。使用 32 bytes。与地址长度一致，但彼此不重合。

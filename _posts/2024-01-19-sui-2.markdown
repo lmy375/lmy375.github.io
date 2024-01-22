@@ -1,0 +1,270 @@
+---
+lng_pair: id_sui_2
+title: Sui 实用学习笔记 (2) - Move
+category: 公链
+tags: [公链, Move]
+
+# publish date
+date: 2024-01-19 10:00:00 +0800
+
+---
+
+<!-- outline-start -->
+
+Sui Move 智能合约相关知识与代码示例
+
+<!-- outline-end -->
+
+# Move 语言
+
+参考资料：
+- [Move package 编写](https://docs.sui.io/guides/developer/first-app/write-package)
+- [Counter 合约示例](https://docs.sui.io/guides/developer/app-examples/e2e-counter)
+- [Move 编程语言中文书](https://move-book.com/cn/)
+- [Move Book 中文版](https://move-dao.github.io/move-book-zh/introduction.html)
+- [基于虚拟机源码分析move合约系列](https://blog.csdn.net/biakia0610/article/details/127091796?spm=1001.2014.3001.5502)
+- [Move语言安全分析](https://mirror.xyz/brycew.eth/AHr4M6OwYiVrrpnzytN_vWLg_dojh6kicKDXOaNHlt4)
+- [Sui 官方课程](https://github.com/sui-foundation/sui-move-intro-course/tree/main)
+- [BlockEden Sui Move Docs](https://blockeden.xyz/docs/sui/sui-move/intro/)
+- [《Move中的设计模式》系列文章](https://learnblockchain.cn/people/6415)
+
+> 注：以下均为 Sui 链的 Move 合约约定。与 Aptos 虽然均使用 Move 合约，但略有不同。
+
+Move 语言一些特点：
+- 基础类型包括 bool, u8, u64, u128, address。不支持有符号数，但可以通过一些 lib 实现 i32, i64, i256, u256 类型。
+- 初始化方法名必须为 `init`，且最后一个参数类型为 `&TxContext`。
+- Sui 函数支持泛型，可以将类型作为一种参数传入。
+- 函数可见性：entry 修饰的方法表示可以由 PTB 发起。此类方法返回类型必须有 `drop`。public 方法可以由 PTB 发起，也可以由其他 module 发起。
+
+Object 的引入是 Sui 与以太坊架构上最主要的区别之一。在合约语言层面上，使用 struct 定义 object。Move 合约主体（即 package）不存储任何数据，所有数据都存储在 object 中。因此在 Move 编程中不存在全局变量之类的东西，所有数据都由参数以 object 的形式传入。
+
+前面简单介绍了 object 所有权，这里补充 Move 层面的一些内容：
+- address-owned objects 可由特定地址修改（即 owner 发起的交易才能修改对应的 object）。并可通过 `sui::transfer::transfer` 转移所有权。有 store 标志的 object 可以使用 `sui::transfer::public_transfer`。 注意 object 创建并设置 owner 后不可以被 share。address-owned objects 由于不可能被其他地址修改，因此相关的交易可以并行处理，利于提高链的性能。
+- Coin 是非常常用的 address-owned object。通过 `sui::transfer::public_transfer` 转移所有权实现转账。
+- `sui::transfer::public_freeze_object` 可创建 immutable object。任何人都可以使用。但不能通过 `& mut` 的形式引用，因为不可修改。
+- object 可以通过嵌套定义 wrap 到其他 object structure 中。此时所有权跟随外层 object。并此内层 object 不再能够通过 id 访问到。
+- object 也可以通过 `sui::transfer::transfer/public_transfer` 直接转移给其他 object id。这样所有权跟随 parent object。
+
+语言层定义 object 时有能力（术语为 `ability`）的概念：
+- copy :允许此类型的值被复制
+- drop :允许此类型的值被弹出/丢弃
+- store: 允许此类型的值存在于全局存储的某个结构体中
+    - 有 `store` ability 的 object 可以通过 `sui::transfer::public_transfer` 转移所有权，并且可以 wrap 到其他 object 中。
+    - 没有 `store` 则只有定义该 object 的 module 可以使用 `sui::transfer::transfer` 才转移。
+- key: 允许此类型作为全局存储中的键(具有 key 能力的类型才能保存到全局存储中)。有 `key` 标识的 object 可通过 `sui::transfer::share_object` 进行 share，使任何人均可修改
+
+基础数据类型（包括 bool, u8, u64, u128, address）具有 copy, drop, store 能力。
+
+## 示例：Counter
+
+示例来自[官方文档](https://docs.sui.io/guides/developer/app-examples/e2e-counter)。
+
+代码如下：
+```
+// counter.move
+
+// <Package 名> :: <Module 名>
+module counter::counter {
+
+    // 导入变量
+    use sui::transfer;
+    use sui::object::{Self, UID};
+    use sui::tx_context::{Self, TxContext};
+
+    /// A shared counter.
+    struct Counter has key {
+        id: UID,
+        owner: address, // 注意这个只是 object 里的一个 field，和其自身的 owner 要有所区分。
+        value: u64
+    }
+
+    /// Create and share a Counter object.
+    public fun create(ctx: &mut TxContext) {
+        // share 后 object 可以被任何人操作。
+        transfer::share_object(Counter {
+            id: object::new(ctx),
+            owner: tx_context::sender(ctx), // 相当于 msg.sender
+            value: 0
+        })
+    }
+
+    /// Increment a counter by 1.
+    // 调用方需要传入事先确定 object id，并传入
+    public fun increment(counter: &mut Counter) {
+        // 与 Rust 类似的，mut 变量才能被修改。
+        counter.value = counter.value + 1;
+    }
+
+    /// Set value (only runnable by the Counter owner)
+    public fun set_value(counter: &mut Counter, value: u64, ctx: &TxContext) {
+        // 检查 owner
+        assert!(counter.owner == tx_context::sender(ctx), 0);
+        counter.value = value;
+    }
+}
+```
+
+## 示例：Coin
+
+示例来自[官方文档](https://docs.sui.io/guides/developer/sui-101/create-coin)。
+
+```
+module examples::mycoin {
+    use std::option;
+    use sui::coin;
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+
+    /// The type identifier of coin. The coin will have a type
+    /// tag of kind: `Coin<package_object::mycoin::MYCOIN>`
+    /// Make sure that the name of the type matches the module's name.
+    struct MYCOIN has drop {}
+
+    /// Module initializer is called once on module publish. A treasury
+    /// cap is sent to the publisher, who then controls minting and burning
+    fun init(witness: MYCOIN, ctx: &mut TxContext) {
+        let (treasury, metadata) = coin::create_currency(witness, 6, b"MYCOIN", b"", b"", option::none(), ctx);
+        transfer::public_freeze_object(metadata);
+        transfer::public_transfer(treasury, tx_context::sender(ctx))
+    }
+}
+```
+
+上面的 MYCOIN struct 称为 One-Time Witness（OTW），此类型只有一个实例。Move 定义此种类型的约定为
+- 定义需要与 module 一致。
+- 有且只有 `drop` ability.
+- struct 中没有其他域，或只有一个 bool。
+
+最终创建的 token object 类型为 `sui::coin::Coin<examples::mycoin::MYCOIN>` （注意，链上看的时候 sui 和 examples 都会替换成对应的 object id）。在 Sui 上发 Token 相比于部署一个新合约，更像是创建了一种新类型。Sui 中的类型与 module 相关联，意味着只有 module 的函数才能创建对应类型的 object。
+
+https://suivision.xyz/coins 可以查看 Sui 上发布的 Coin。用户持有的是 `sui::coin::Coin`，链上表示 Coin 的一些元数据的是 `sui::coin::CoinMetadata`。比如 [USDC](https://suivision.xyz/coin/0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN) 的元数据对象的类型是 `0x2::coin::CoinMetadata<0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN>`。
+
+在[sui::coin](https://suiexplorer.com/object/0x0000000000000000000000000000000000000000000000000000000000000002?module=coin&network=mainnet) package 中可以找到相应的定义
+```
+/// A coin of type `T` worth `value`. Transferable and storable
+struct Coin<phantom T> has key, store {
+        id: UID,
+        balance: Balance<T>
+}
+
+/// Each Coin type T created through `create_currency` function will have a
+/// unique instance of CoinMetadata<T> that stores the metadata for this coin type.
+struct CoinMetadata<phantom T> has key, store {
+    id: UID,
+    /// Number of decimal places the coin uses.
+    /// A coin with `value ` N and `decimals` D should be shown as N / 10^D
+    /// E.g., a coin with `value` 7002 and decimals 3 should be displayed as 7.002
+    /// This is metadata for display usage only.
+    decimals: u8,
+    /// Name for the token
+    name: string::String,
+    /// Symbol for the token
+    symbol: ascii::String,
+    /// Description of the token
+    description: string::String,
+    /// URL for the token logo
+    icon_url: Option<Url>
+}
+
+/// Capability allowing the bearer to mint and burn
+/// coins of type `T`. Transferable
+struct TreasuryCap<phantom T> has key, store {
+    id: UID,
+    total_supply: Supply<T>
+}
+```
+
+
+`create_currency` 代码如下，非常简单，就是创建了 TreasuryCap 和 CoinMetadata 两个 object。
+
+```
+/// Create a new currency type `T` as and return the `TreasuryCap` for
+/// `T` to the caller. Can only be called with a `one-time-witness`
+/// type, ensuring that there's only one `TreasuryCap` per `T`.
+public fun create_currency<T: drop>(
+    witness: T,
+    decimals: u8,
+    symbol: vector<u8>,
+    name: vector<u8>,
+    description: vector<u8>,
+    icon_url: Option<Url>,
+    ctx: &mut TxContext
+): (TreasuryCap<T>, CoinMetadata<T>) {
+    // Make sure there's only one instance of the type T
+    assert!(sui::types::is_one_time_witness(&witness), EBadWitness);
+
+    (
+        TreasuryCap {
+            id: object::new(ctx),
+            total_supply: balance::create_supply(witness)
+        },
+        CoinMetadata {
+            id: object::new(ctx),
+            decimals,
+            name: string::utf8(name),
+            symbol: ascii::string(symbol),
+            description: string::utf8(description),
+            icon_url
+        }
+    )
+}
+```
+
+mint 方法如下，只有持有对应 TreasuryCap object 的地址才能调用 mint。mint 创建出对应的 Coin object 返回。
+```
+/// Create a coin worth `value`. and increase the total supply
+/// in `cap` accordingly.
+public fun mint<T>(
+    cap: &mut TreasuryCap<T>, value: u64, ctx: &mut TxContext,
+): Coin<T> {
+    Coin {
+        id: object::new(ctx),
+        balance: balance::increase_supply(&mut cap.total_supply, value)
+    }
+}
+```
+
+这里是 Sui 中的一种典型 Pattern，即通过调用方是否有某一类型的 object 来进行鉴权。下面也是一个例子。效果相当于 Solidity 中的 onlyOwner。
+
+```
+/// Update name of the coin in `CoinMetadata`
+public entry fun update_name<T>(
+    _treasury: &TreasuryCap<T>, metadata: &mut CoinMetadata<T>, name: string::String
+) {
+    metadata.name = name;
+}
+```
+
+## 示例：Flashloan
+
+示例来自 [Cetus Protocol](https://github.com/CetusProtocol/cetus-amm/blob/main/sui/sources/amm_swap.move#L213)
+
+```
+// 注意这个 struct 没有 key, drop 等能力
+struct FlashSwapReceipt<phantom CoinTypeA, phantom CoinTypeB> {
+    pool_id: ID,
+    a2b: bool,
+    pay_amount: u64,
+    protocol_fee_amount: u64,
+}
+
+public(friend) fun flash_swap<CoinTypeA, CoinTypeB>(
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    amount_in: u64,
+    amount_out: u64,
+    a2b: bool,
+): (Balance<CoinTypeA>, Balance<CoinTypeB>, FlashSwapReceipt<CoinTypeA, CoinTypeB>) {
+    // 执行转账逻辑
+}
+
+public(friend) fun repay_flash_swap<CoinTypeA, CoinTypeB>(
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    balance_a: Balance<CoinTypeA>,
+    balance_b: Balance<CoinTypeB>,
+    receipt: FlashSwapReceipt<CoinTypeA, CoinTypeB>
+) {
+    // 执行还款逻辑
+}
+```
+
+基本思路是定义一个没有任何能力的 struct（称为 [Hot Potato](https://docs.sui.io/concepts/sui-move-concepts/patterns/hot-potato) ）。并在借款函数中的返回。由于该 type 的对象不能被保存在 storage 中，也不能被丢弃，想要交易成功，就必须调用 repay_flash_swap 传回合约处理。

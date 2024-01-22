@@ -1,0 +1,96 @@
+---
+lng_pair: id_sui_3
+title: Sui 实用学习笔记 (3) - PTB
+category: 公链
+tags: [公链, Move]
+
+# publish date
+date: 2024-01-19 10:00:00 +0800
+
+---
+
+<!-- outline-start -->
+
+Sui 可编程交易块相关知识。
+
+<!-- outline-end -->
+
+# 参考
+
+- [Transactions](https://docs.sui.io/concepts/transactions)
+- [Programmable Transaction Blocks](https://docs.sui.io/concepts/transactions/prog-txn-blocks)
+
+# 交易格式
+
+Sui 交易包括如下字段：
+- Sender address：交易的发送方地址
+- Gas input：一个 `sui::coin::Coin<SUI>` object，用来支付 gas
+- Gas price：非 0 整数，表示 gas 价格
+- Maximum gas budget: 类似于 gas limit。Gas input 的 balance 需要大于 `Maximum gas budget * Gas price`
+- Epoch：交易的 Epoch
+- Type：交易类型
+- Authenticator：公钥及对应的签名
+- Expiration：交易失效时间。
+
+# PTB
+
+Sui 使用可编程交易块（简称 PTB），简单来说，Sui 的每笔交易可以是多笔交易构成的交易链。链中每个结点的输入是前面结点的输出。利用这个机制可以通过交易实现一些简单的逻辑，而不需要像以太坊等链一下只能通过编写智能合约来实现这种需求。
+
+PTB 的结构：
+- inputs：交易的输入列表，输入可以两种类型：
+    - object：要求是 sender 所 own 的，或者是 shared/immutable。这就保证了每个 object 只有 owner 才能修改，这是 Sui 权限认证的核心机制。
+    - pure value：基础类型的数据，如 u64, vector<u8> 等等
+- commands：交易的 command 列表。
+    - command 代表一种操作，每种 command 的输入参数可以来自交易的 inputs 或者其他 command 的 results。由于 commands 是一维数组。results 使用二维数组来保存。输入有以下几种
+        - `Input(u16)` 表示来自 inputs 数组
+        - `GasCoin` 表示交易的 Gas object
+        - `NestedResult(u16, u16)` 表示来自之前 commands 的输出，使用二维形式索引。
+        - `Result(u16)` 相当于 `NestedResult(u16, 0)`，但会在对应的 commands 返回 value 数量为 0 或大于 1 的情况下报错。
+    - command 有以下几种：
+        - **TransferObjects** 转移一或多个 object 给目标地址。无输出。
+        - **SplitCoins** 分割 Coin，要求输入 `sui::coin::Coin<_>` 类型的 object，输出一或多个同类 object（注：不包括原本的 输入的 object）
+        - **MergeCoins** 合并 Coin，要求输入是一或多个 `sui::coin::Coin<_>` 类型的 object。合并到第一个 object 中，无输出。
+        - **MakeMoveVec** 构造 vector，输出 vector object。
+        - **MoveCall** 发起合约调用，调用 package 的 public/entry 方法，根据方法定义输出返回值。
+        - **Publish** 部署 package 并调用每个 module 的 init 方法，输出 `sui::package::UpgradeCap` object。
+        - **Upgrade** 更新 package。要求有 `sui::package::UpgradeCap`，输出 `sui::package::UpgradeReceipt` object。
+    - command 对参数的使用类型：根据函数定义，对 object 类参数有不同使用方式。
+        - `&mut T` 可修改的借用。所谓借用，表示不改变所有权。表示对参数可写。
+        - `&T` 不可修改的借用。表示对参数只读。
+        - `T`。如果 T 有 copy 能力则复制使用。否则移动使用。在 Sui 中保存在链上的 object 是不可能有 copy 能力的。因为所有 object 都存在 `sui::object::UID` 类型的唯一标识的字段 ID 。
+
+交易完成后，对 inputs 和 results 会进行检查：
+- 对 inputs 的检查：
+    - immutable object 跳过检查，因为不可修改。
+    - mutable input object 所有权归还 owner。
+    - pure input 进行 drop。（注：所有 pure 类型都有 copy, drop 能力）
+    - shared object 仍为 shared 或 deleted。不可 wrap, transfer, freezing。
+- 对 results 的检查：
+    - 有 drop 能力的 drop。
+    - 有 copy 能力但不含 drop 的，最后一次使用视为 move
+    - 无 drop 能力的未被使用的 object 报错。（注：利用这个机制可以实现闪电贷）
+
+
+[PTB 示例](https://docs.sui.io/concepts/transactions/prog-txn-blocks#example)：
+```
+{
+  inputs: [
+    Pure(/* @0x808 BCS bytes */ ...),
+    Object(SharedObject { /* Marketplace shared object */ id: market_id, ... }),
+    Pure(/* 100u64 BCS bytes */ ...),
+  ]
+  commands: [
+    SplitCoins(GasCoin, [Input(2)]),
+    MoveCall("some_package", "some_marketplace", "buy_two", [], [Input(1), NestedResult(0, 0)]),
+    TransferObjects([GasCoin, NestedResult(1, 0)], Input(0)),
+    MoveCall("sui", "tx_context", "sender", [], []),
+    TransferObjects([NestedResult(1, 1)], NestedResult(3, 0)),
+  ]
+}
+```
+执行过程：
+- GasCoin 分割出 100
+- 调用 `some_package::some_marketplace::buy_two(market, Coin<SUI>(100))` 买到 2 个 object。
+- buy 到的第一个 object 及剩余的 GasCoin 转给 0x808 地址
+- 调用 `sui::tx_context::sender` 得到交易 sender
+- buy 到的第二个 object 转给 sender

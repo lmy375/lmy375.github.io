@@ -40,4 +40,4 @@ facebook:
 # add your new contact
 wechat:
   icon: "fa fa-wechat"
-  url: "https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz="
+  url: "/assets/img/about/about.jpg"

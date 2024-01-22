@@ -1,0 +1,91 @@
+---
+lng_pair: id_sui_4
+title: Sui 实用学习笔记 (4) - VM & framework package
+category: 公链
+tags: [公链, Move]
+
+# publish date
+date: 2024-01-19 10:00:00 +0800
+
+---
+
+<!-- outline-start -->
+
+Sui VM, native functions, sui package。
+
+<!-- outline-end -->
+
+# VM
+ 
+Sui VM 实现与 Move 原始 VM 一致。
+ 
+Move VM 为栈式虚拟机，支持约 [60 多种 bytecode](https://github.com/MystenLabs/sui/blob/main/external-crates/move/crates/move-binary-format/src/file_format.rs#L1165)
+- 栈操作类：Pop, LdU8, LdU256, LdTrue, LdConst 等
+- 跳转类：Ret, BrTrue, BrFalse, Branch
+- 类型转换类：CastU8, CastU256 等
+- 函数局部变量操作：CopyLoc, MoveLoc, StLoc
+- 函数调用：Call, CallGeneric
+- 结构体操作：Pack, PackGeneric, Unpack, UnpackGeneric
+- 引用操作：ReadRef, WriteRef, FreezeRef
+- Borrow 类：MutBorrowLoc, ImmBorrowLoc, MutBorrowField, MutBorrowFieldGeneric, ImmBorrowField, ImmBorrowFieldGeneric
+- 算术操作、逻辑操作、比较操作：Add, Sub, Or, Eq 等
+- 向量操作: VecPack, VecLen, VecImmBorrow, VecMutBorrow, VecPushBack, VecPopBack, VecUnpack,  VecSwap
+
+虚拟机 [Bytecode 执行逻辑在这里]( https://github.com/MystenLabs/sui/blob/main/external-crates/move/crates/move-vm-runtime/src/interpreter.rs#L853)。
+
+
+其中大部分指定可以望文生义，只解释一些特殊的：
+- Borrow 类会 load mutable/immutable reference
+- ReadRef 读取 reference 的值到栈中，需要 value type 有 copy ability。
+- WriteRef 写值到 reference 中，需要 value type 有 drop ability。
+- FreezeRef 将 mutable reference 转成 immutable （实际在 VM 层这条指令[不起任何作用](https://github.com/MystenLabs/sui/blob/main/external-crates/move/crates/move-vm-runtime/src/interpreter.rs#L1209)，因为 VM 层并不区分 mutable/immutable）
+
+Move VM 中定义 [gas 计算接口](https://github.com/MystenLabs/sui/blob/main/external-crates/move/crates/move-vm-types/src/gas.rs#L74)。Sui 中实现了这些接口，根据指令类型，[完成 Gas 计算逻辑](https://github.com/MystenLabs/sui/blob/main/crates/sui-types/src/gas_model/tables.rs#L397)。
+
+# PTB commands
+
+PTB commands 逻辑[在这里](https://github.com/MystenLabs/sui/blob/main/sui-execution/latest/sui-adapter/src/programmable_transactions/execution.rs#L131)。
+
+PTB 结构的 [Json Schema 定义在这里](https://github.com/MystenLabs/sui/blob/main/crates/sui-json-rpc-types/src/sui_transaction.rs#L1494)
+
+# Native functions
+
+Sui 对 Move VM 修改不多。定制化功能通过 native function 来实现。
+
+Sui 定义的 [native functions](https://github.com/MystenLabs/sui/blob/main/sui-execution/latest/sui-move-natives/src/lib.rs#L519) 主要包括：
+- 密码学相关函数：hash, 验签等。
+- dynamic_field 操作函数
+- event::emit 生成 event
+- [object 操作函数](https://github.com/MystenLabs/sui/blob/main/sui-execution/latest/sui-move-natives/src/object.rs)： object::delete_impl, object::borrow_uid, object::record_new_uid
+- [transfer 相关函数](https://github.com/MystenLabs/sui/blob/main/sui-execution/latest/sui-move-natives/src/transfer.rs)：transfer::transfer_impl, transfer::freeze_object_impl, transfer::share_object_impl, transfer::receive_impl
+- tx_context::derive_id 生成 ID
+- OTW 类型判断 types::is_one_time_witness
+
+# Packages
+
+通过封装 native functions，实现了 [Sui framework packages](https://github.com/MystenLabs/sui/tree/main/crates/sui-framework/packages)。在[区块链浏览器中也可以查到对应代码](https://suiexplorer.com/object/0x0000000000000000000000000000000000000000000000000000000000000002?network=mainnet)
+
+这些 Packages，相关 object 被[硬编码到一些固定的 Sui 地址上](https://github.com/MystenLabs/sui/blob/main/crates/sui-types/src/lib.rs#L88)。
+- 0x1 std lib 主要是 Move 基础类型处理函数
+- 0x2 sui framework 最核心的 package，封装了 Sui 相关的各种操作函数
+- 0x3 sui system 底层系统如 staking, validator 相关的函数。
+- 0xdee9 deep book 相关函数，Sui 实现的订单簿 decentralized central limit order book (CLOB)
+- 0x5 sui system state object
+- 0x6 clock object
+- 0x7 authenticator state object
+- 0x8 randomness state object
+- 0x403 DenyList object
+
+Sui framework packages 中的一些常见模块：
+- balance.move：Balance 和 Supply 对象。TreasuryCap 和 Coin 会用到。
+- clock.move：时钟模块。`sui::clock::timestamp_ms(0x6)` 获取当前时间。
+- coin.move：Token 标准。CoinMetadata 保存 decimals, name, symbol 等元数据，通常为 immutable。Coin 保存 balance, 是 transfer 时使用的 object。
+- dynamic_field.move, dynamic_object_field.move ：dynamic_field 增删改查的一些函数。
+- event.move：创建 event 的函数 `sui::event:emit`
+- math.move：数学相关函数
+- package.move：Package 升级相关函数。定义 UpgradeCap 等对象
+- sui.move：定义原生代币 `sui::coin::Coin<sui::sui::SUI>`
+- table.move, linked_table.move, object_table.move：类似 Map 的 数组结构
+- token.move：功能更丰富的 Coin
+- transfer.move：最常用模块之一，封装了 native transfer 相关函数。
+- tx_context.move：类似 Solidity 里的 msg。最常用的 `sui::tx_context::sender()` 方法
