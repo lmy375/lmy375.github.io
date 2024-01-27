@@ -3,7 +3,7 @@ lng_pair: id_ethcall
 title: 通过 eth_call 模拟执行任意智能合约代码
 category: 智能合约
 tags: [Solidity]
-img: ":moon3.jpg"
+img: ":moon4.webp"
 date: 2022-09-19 10:00:00 +0800
 
 ---

@@ -38,7 +38,7 @@ img: ":avatar.jpg"
 
 Starting from my student days, I dabbled in hacking, becoming a script kiddie, conducting numerous `penetration tests`, and gaining access to some small websites, in a non-malicious way, of course.
 
-Later, I delved into software `reverse engineering` and binary exploitation techniques. During this time, I conducted an in-depth study of [VMProtect](), a renowned software protection tool.
+Later, I delved into software `reverse engineering` and binary exploitation techniques. During this time, I conducted an in-depth study of VMProtect, a renowned software protection tool.
 
 In college, I founded a not-so-famous CTF team called [Lancet](https://ctftime.org/team/20556), participating in many CTF contests and tackling Re/Pwn/Web challenges most.
 
@@ -46,4 +46,4 @@ I then served as a security researcher in a well-known security lab, primarily f
 
 Eventually, my interest in vulnerability mining waned - it was too hard and increasingly dull. By a stroke of luck, I began researching `blockchain technology and web3 security`. Now, I'm not just a security researcher, but also a web3 builder, or maybe `buidler` in a more web3 way :)
 
-I wrote [technical articles](:id_past_blogs) a lot, not out of a love for writing, but out of fear of forgetting. Now, I'm sharing them with you, in the hope that they might be of some help.
+I wrote [technical articles](/posts/2024-01-01-past-blogs) a lot, not out of a love for writing, but out of fear of forgetting. Now, I'm sharing them with you, in the hope that they might be of some help.
