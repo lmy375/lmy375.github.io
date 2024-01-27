@@ -1,13 +1,12 @@
 ---
 lng_pair: id_past_blogs
-title: 历史外站文章备份
+title: 旧文合集
 category: 
 tags: []
-img: ":moon4.webp"
+img: ":moon2.webp"
 date: 2024-01-01 10:00:00 +0800
 
 ---
-
 
 - 2017-03-10 [VMProtect 3.09 虚拟机架构浅析](https://www.52pojie.cn/thread-586130-1-1.html)
 - 2017-05-13 [通过编译优化进行VMP代码还原](https://bbs.kanxue.com/thread-217588.htm)

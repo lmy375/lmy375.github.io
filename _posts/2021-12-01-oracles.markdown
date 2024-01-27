@@ -3,7 +3,7 @@ lng_pair: id_oracles
 title: 主流预言机使用及原理介绍
 category: 
 tags: []
-img: ":moon4.webp"
+img: ":moon2.webp"
 date: 2021-12-01 10:00:00 +0800
 
 ---

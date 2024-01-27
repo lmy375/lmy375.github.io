@@ -3,7 +3,7 @@ lng_pair: id_contract_fuzzer
 title: 智能合约 Fuzzer 调研
 category: 智能合约
 tags: [Solidity]
-img: ":moon4.webp"
+img: ":moon2.webp"
 date: 2021-12-13 10:00:00 +0800
 
 ---
