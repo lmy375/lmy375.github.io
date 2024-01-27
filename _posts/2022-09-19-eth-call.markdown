@@ -1,0 +1,201 @@
+---
+lng_pair: id_ethcall
+title: 通过 eth_call 模拟执行任意智能合约代码
+category: 智能合约
+tags: [Solidity]
+img: ":moon3.jpg"
+date: 2022-09-19 10:00:00 +0800
+
+---
+
+
+# 基本原理
+
+`eth_call` RPC 接口可用于测试执行某些交易的结果。直观上似乎只能进行单次交易或合约的调用。但实际上利用 `eth_call` RPC 接口可以执行任意 EVM 代码。如下：
+
+```
+# 这段 EVM 代码的作用是返回 0x000000000000000000000000000000ff
+$ evm --input 60ff60005260106010f3 disasm
+60ff60005260106010f3
+00000: PUSH1 0xff
+00002: PUSH1 0x00
+00004: MSTORE
+00005: PUSH1 0x10
+00007: PUSH1 0x10
+00009: RETURN
+# 执行效果如下：
+$ evm --code 0x60ff60005260106010f3 run
+0x000000000000000000000000000000ff
+```
+
+相当于：
+```
+// web3
+> eth.call({data:"0x60ff60005260106010f3"})
+"0x000000000000000000000000000000ff"
+```
+
+那么将多次交易、合约调用的逻辑编写成智能合约代码，并通过 eth_call 执行，就可以实现对多笔交易的测试。
+
+这种方法也方便的获取链上的信息的获取，并支持进行更复杂的计算逻辑整合。
+
+此方法不需要通过 web3 接口编写多个单独的合约调用代码，也不知道依赖第三方的 fork 框架。
+
+# eth_call 执行任意代码示例
+
+合约代码：
+```
+pragma solidity 0.6.10;
+
+/**
+ * @title ERC20 interface
+ * @dev see https://github.com/ethereum/EIPs/issues/20
+ */
+interface IERC20 {
+  function totalSupply() external view returns (uint256);
+  function balanceOf(address who) external view returns (uint256);
+  function allowance(address owner, address spender) external view returns (uint256);
+  function transfer(address to, uint256 value) external returns (bool);
+  function approve(address spender, uint256 value) external returns (bool);
+  function transferFrom(address from, address to, uint256 value) external returns (bool);
+
+  event Transfer(address indexed from, address indexed to, uint256 value);
+  event Approval(address indexed owner, address indexed spender, uint256 value);
+
+  function name() view external returns(string memory);
+  function symbol() view external returns(string memory);
+  function decimals() view external returns(uint8);
+}
+
+
+contract Foo {
+    constructor() public payable{
+        address a = address(this);
+        address b = msg.sender;
+        uint c = msg.sender.balance;
+        IERC20 usdt = IERC20(0xdAC17F958D2ee523a2206206994597C13D831ec7); // USDT
+        uint d = usdt.balanceOf(msg.sender);
+        
+        // eth_call 调用无法获取 event。因此不能通过 event 将数据传出。
+        // 而非 hardhat 网络也无法使用 console.log 接口。
+        
+        // 因此只能通过 return 的方式将数据返回。
+        // 但 constructor 不支持 return。
+        // 这里通过汇编强行 return 数据。
+        assembly {
+            mstore(0, a)
+            mstore(0x20, b)
+            mstore(0x40, c)
+            mstore(0x60, d)
+            return(0, 0x80)
+        }
+    }
+} 
+```
+调用合约的 js 代码（使用了 hardhat 框架，但没有使用其私有网络和 fork 的功能。）
+```
+const { ethers } = require("hardhat");
+
+async function main() {
+
+    const Foo = await ethers.getContractFactory("Foo");
+
+    // 某不知道私钥的地址。
+    const address = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+    
+    // 使用 Alchemy 开放的 RPC
+    const provider = new ethers.providers.AlchemyProvider()
+    
+    const signer = new ethers.VoidSigner(address, provider);
+    
+    // 合约部署交易
+    let tx = Foo.getDeployTransaction();
+    
+    // 有需要的话，这里可以传入 ether
+    // let tx = Foo.getDeployTransaction({value: 1000}) 
+    // console.log(tx);
+    
+    // 利用 eth_call 执行，并返回执行结果。
+    console.log(await signer.call(tx));
+}
+
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});
+```
+
+执行结果如下：
+```
+➜  hardhat npx hardhat run ./scripts/test_erc20.js
+0x00000000000000000000000084bcbaa99ae6d1f7f70b37d5f6c27c9631eeb2f2000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee00000000000000000000000000000000000000000000000837e17408bda70918000000000000000000000000000000000000000000000000000000000038d028
+```
+以最后的返回结果 0x38d028 为例，说明 `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE` 地址有 3.723304 个 USDT。与 https://etherscan.io/address/0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE 上数据一致，证明执行是正常的。
+
+# 说明
+
+优点：
+- 不需要依赖第三方 fork 框架，只使用了以太坊提供的 `eth_call` RPC 接口。对于其他仿以太坊的网络（如BSC HECO 等）只要结点提供了`eth_call` RPC 接口即可直接使用该方法。执行速度相比于 fork 模式要快。
+- 可通过 solidity 代码编写链上（合约级别的）信息的获取及处理代码。不需要编写复杂的 web3 代码。由于获取的数据也来自合约，通过 solidity 编写会比较直观，不会有 `solidity <-> js` 来回切换的割裂感。
+- 由于 `eth_call` 不上链，不需要签名，可以指定任意 `from`（即合约中的 `msg.sender` 可控）和 `value`（即合约中的 `msg.value`）。可以选择有大量 ETH 资产的地址作为 `from` 传入合约中。这样合约就有了大量 ETH，可以在现网中进行一些需要 ETH 的测试（比如编写闪电贷测试 PoC）。但这里需要注意，合约本身地址与 `from`  不同，因此并不能通过此方法转移 ERC20 类的资产进行测试。（可以用 ETH 在 dex 中兑换，但比较麻烦）。
+
+缺点：
+- 目前只找到 inline assembly 这种不太优雅的方法获取返回数据。处理起来不够方便。
+- 如果编写代码过于复杂，会受 gas 限制导致执行失败。并且 EVM 执行效率上要低于 js 等语言。
+- 对于一些交易级的数据，无法通过合约代码获取，故此方法也不适用。
+- 由于  `eth_call` 似乎不支持自定义 nonce，因此无法直接通过指定 from + nonce 方法冒充某一指定地址的合约。当有此需求时，仍需要使用 fork 网络的形式来绕过那些需要签名的地方（如通过 hardhat 的 `hardhat_impersonateAccount`） 来实现。并且 `eth_call` 不会更新以太坊 state，无法利用多个 `eth_call` 进行交易状态的累积。这点上看 fork 主网的方法会更灵活。
+
+
+# 更新
+
+> 2022/09/19 更新
+
+替换 `Executor.run()` 方法中的实现，可以自定义任意的参数、返回值。然后在 `EthCall` 构造函数中直接返回 run 的 return data。然后可直接利用 run 的 ABI 进行解码，使用起来更加方便。
+
+```
+pragma solidity ^0.8.13;
+
+contract Executor {
+    constructor() public payable {}
+
+    function run() external returns(address, address, address){
+        return (msg.sender, tx.origin, address(this));
+    }
+}
+
+contract EthCall {
+    constructor() public payable {
+        Executor e = new Executor();
+        e.run();
+        // Just return what run() returned.
+        assembly {
+            let size := returndatasize()
+            returndatacopy(0, 0, size)
+            return(0, size)
+        }
+    }
+}
+```
+
+相关功能已经实现在 [peth](https://github.com/lmy375/peth/) 中
+```
+peth > ! cat ethcall_executor.sol
+pragma solidity ^0.8.13;
+interface ERC20{
+    function balanceOf(address a) external returns (uint);
+}
+contract Executor {
+    function run() external returns(uint){
+        return ERC20(0xdAC17F958D2ee523a2206206994597C13D831ec7).balanceOf(0x5754284f345afc66a98fbB0a0Afe71e0F007B949);
+    }
+}
+
+peth > run ethcall_executor.sol
+972099416751514
+```
+
+> 2024/1/27 补充
+
+当年这个技巧还是有一定意义的，比如可以做一些简单的模拟和快速的批量查询等。
+
+但现在主流 EVM RPC 实现的 `eth_call` 实际可以通过 `eth_call` 的第 3 个参数 [State override set](https://geth.ethereum.org/docs/interacting-with-geth/rpc/ns-eth) 去覆盖掉地址的合约，这样实际上也一定要走 constructor 的合约创建路径。可以直接把 runtime bytecode 覆盖上去然后使用正常走正常的合约调用途径。

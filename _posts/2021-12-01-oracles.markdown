@@ -1,0 +1,743 @@
+---
+lng_pair: id_oracles
+title: 主流预言机使用及原理介绍
+category: 
+tags: []
+img: ":moon3.jpg"
+date: 2021-12-01 10:00:00 +0800
+
+---
+
+# 预言机作用
+
+- 向链上（on-chain）提供链下（off-chain / real-world）信息
+    - 随机数
+    - 币价
+    - HTTP 请求结果
+    - 进行复杂的计算
+    - 其他真实世界数据
+
+# ChainLink
+
+ChainLink 是目前最知名的去中心化预言机平台。
+
+- 官方文档 https://docs.chain.link/
+- ChainLink v1.1 中文文档（注：不是很新） https://chainlink-chinese.readme.io/docs
+- Ethereum Data Feeds 地址列表 https://docs.chain.link/docs/ethereum-addresses/
+- ChainLink 请求模型 https://docs.chain.link/docs/architecture-request-model/
+    - 基本逻辑
+    1. 链上合约通过 ERC677 的 transferAndCall 方法将 LINK 发送给 Oracle 合约，并附带请求数据
+    2. Oracle 将请求数据通过 event 发送到链上。
+    3. 链下多个结点完成请求数据的任务，并单独将请求结果返回到链上。
+    4. 链上进行聚合（最新的 Off-Chain Reporting (OCR) 进行链下聚合）。
+    5. 聚合结果通过调用请求合约的 callback 函数的方式，传回请求合约。
+
+## Data Feed
+
+ChainLink 中最典型的使用就是用来获取喂价数据。通常是 DeFi 合约中用来获取某些代币的报价信息。AAVE 和 Synthetix 使用 ChainLink 作为喂价预言机。
+
+如下为官方使用获取币价的示例，参考： https://docs.chain.link/docs/get-the-latest-price/
+
+```
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.7;
+
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
+contract PriceConsumerV3 {
+
+    AggregatorV3Interface internal priceFeed;
+
+    /**
+     * Network: Kovan
+     * Aggregator: ETH/USD
+     * Address: 0x9326BFA02ADD2366b30bacB125260Af641031331
+     */
+    constructor() {
+        priceFeed = AggregatorV3Interface(0x9326BFA02ADD2366b30bacB125260Af641031331);
+    }
+
+    /**
+     * Returns the latest price
+     */
+    function getLatestPrice() public view returns (int) {
+        (
+            uint80 roundID, 
+            int price,
+            uint startedAt,
+            uint timeStamp,
+            uint80 answeredInRound
+        ) = priceFeed.latestRoundData();
+        return price;
+    }
+}
+```
+
+喂价合约中的数据，是由真正的 Oralce 数据源通过聚合计算后写入的。
+
+如某主网 [ETH/USD data feed](https://data.chain.link/ethereum/mainnet/crypto-usd/eth-usd) 合约地址为 [0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419](https://etherscan.io/address/0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419)，是 EACAggregatorProxy 合约。其价格来自 Aggregator  [0x37bC7498f4FF12C19678ee8fE19d713b87F6a9e6](https://etherscan.io/address/0x37bc7498f4ff12c19678ee8fe19d713b87f6a9e6) AccessControlledOffchainAggregator 合约。平均 20 分钟左右由 0xcf4be57aa078dc7568c631be7a73adc1cda992f8, 0x5a8216a9c47ee2e8df1c874252fdee467215c25b 等合约内设定的 transmitters （一般为 EOA 地址）调用合约的 transmit 方法提供报价。
+
+注：
+- 使用 Data Feed 不需要支付 Link
+- Data Feed 不需要异步 callback 获取数据。
+- Data Feed 出于成本考虑，不可能做到秒级或者分钟级的实时报价。
+
+## 随机数
+
+- 使用 Chainlink VRF （Chainlink Verifiable Random Function）获取随机数，完整示例 https://docs.chain.link/docs/intermediates-tutorial/
+- 精简示例 https://docs.chain.link/docs/get-a-random-number/
+
+```
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.7;
+
+import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
+
+/**
+ * THIS IS AN EXAMPLE CONTRACT WHICH USES HARDCODED VALUES FOR CLARITY.
+ * PLEASE DO NOT USE THIS CODE IN PRODUCTION.
+ */
+
+/**
+ * Request testnet LINK and ETH here: https://faucets.chain.link/
+ * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here: https://docs.chain.link/docs/link-token-contracts/
+ */
+ 
+contract RandomNumberConsumer is VRFConsumerBase {
+    
+    bytes32 internal keyHash;
+    uint256 internal fee;
+    
+    uint256 public randomResult;
+    
+    /**
+     * Constructor inherits VRFConsumerBase
+     * 
+     * Network: Kovan
+     * Chainlink VRF Coordinator address: 0xdD3782915140c8f3b190B5D67eAc6dc5760C46E9
+     * LINK token address:                0xa36085F69e2889c224210F603D836748e7dC0088
+     * Key Hash: 0x6c3699283bda56ad74f6b855546325b68d482e983852a7a82979cc4807b641f4
+     */
+    constructor() 
+        VRFConsumerBase(
+            0xdD3782915140c8f3b190B5D67eAc6dc5760C46E9, // VRF Coordinator
+            0xa36085F69e2889c224210F603D836748e7dC0088  // LINK Token
+        )
+    {
+        keyHash = 0x6c3699283bda56ad74f6b855546325b68d482e983852a7a82979cc4807b641f4;
+        fee = 0.1 * 10 ** 18; // 0.1 LINK (Varies by network)
+    }
+    
+    /** 
+     * Requests randomness 
+     */
+    function getRandomNumber() public returns (bytes32 requestId) {
+        require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK - fill contract with faucet");
+        return requestRandomness(keyHash, fee);
+    }
+
+    /**
+     * Callback function used by VRF Coordinator
+     */
+    function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
+        randomResult = randomness;
+    }
+
+    // function withdrawLink() external {} - Implement a withdraw function to avoid locking your LINK in the contract
+}
+```
+`VRFConsumerBase` 对底层函数进行一些封装。具体的获取随机数流程大概是：
+1. 构造获取随机数的请求
+2. 将 LINK 代币通过 ERC677 的 transferAndCall 方法发送给 Coordinator。
+3. Coordinator 合约收到手续费和请求数据，emit Event 由 ChainLink 节点处理。
+4. 链下生成随机并签名，发回链上。
+5. 最终调用请求方的 callback 传回随机数。
+
+## API Calls
+
+通过 ChainLink 将允许链上合约调用链下真实网络的 API。整体流程实际与获取随机数是类似的，只是请求数据及结果处理会更加复杂。额外涉及一些概念：
+- Initiators 监听链上合约的请求，将请求封装成具体的链下任务（Job）
+- Adapters 执行 Job 中具体的任务，如：`HttpGet` 进行 HTTP 请求调用 API；`JsonParse` 对结果的 Json 进行解析获取所要的数据；`EthUint256` 将数据转化成以太坊兼容的类型；`EthTx` 将数据打包成交易，发回链上。
+
+下面是一个完整示例，参考：https://docs.chain.link/docs/advanced-tutorial/
+
+```
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.7;
+
+import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
+
+/**
+ * Request testnet LINK and ETH here: https://faucets.chain.link/
+ * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here: https://docs.chain.link/docs/link-token-contracts/
+ */
+
+/**
+ * THIS IS AN EXAMPLE CONTRACT WHICH USES HARDCODED VALUES FOR CLARITY.
+ * PLEASE DO NOT USE THIS CODE IN PRODUCTION.
+ */
+contract APIConsumer is ChainlinkClient {
+    using Chainlink for Chainlink.Request;
+  
+    uint256 public volume;
+    
+    address private oracle;
+    bytes32 private jobId;
+    uint256 private fee;
+    
+    /**
+     * Network: Kovan
+     * Oracle: 0xc57B33452b4F7BB189bB5AfaE9cc4aBa1f7a4FD8 (Chainlink Devrel   
+     * Node)
+     * Job ID: d5270d1c311941d0b08bead21fea7747
+     * Fee: 0.1 LINK
+     */
+    constructor() {
+        setPublicChainlinkToken();
+        oracle = 0xc57B33452b4F7BB189bB5AfaE9cc4aBa1f7a4FD8;
+        jobId = "d5270d1c311941d0b08bead21fea7747";
+        fee = 0.1 * 10 ** 18; // (Varies by network and job)
+    }
+    
+    /**
+     * Create a Chainlink request to retrieve API response, find the target
+     * data, then multiply by 1000000000000000000 (to remove decimal places from data).
+     */
+    function requestVolumeData() public returns (bytes32 requestId) 
+    {
+        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfill.selector);
+        
+        // Set the URL to perform the GET request on
+        request.add("get", "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=ETH&tsyms=USD");
+        
+        // Set the path to find the desired data in the API response, where the response format is:
+        // {"RAW":
+        //   {"ETH":
+        //    {"USD":
+        //     {
+        //      "VOLUME24HOUR": xxx.xxx,
+        //     }
+        //    }
+        //   }
+        //  }
+        request.add("path", "RAW.ETH.USD.VOLUME24HOUR");
+        
+        // Multiply the result by 1000000000000000000 to remove decimals
+        int timesAmount = 10**18;
+        request.addInt("times", timesAmount);
+        
+        // Sends the request
+        return sendChainlinkRequestTo(oracle, request, fee);
+    }
+    
+    /**
+     * Receive the response in the form of uint256
+     */ 
+    function fulfill(bytes32 _requestId, uint256 _volume) public recordChainlinkFulfillment(_requestId)
+    {
+        volume = _volume;
+    }
+
+    // function withdrawLink() external {} - Implement a withdraw function to avoid locking your LINK in the contract
+}
+```
+
+注：
+- 此种形式与获取随机数一样，要通过异步发送请求的方式，等待 Oracle 调用 callback 函数，请求才算完成。
+- 需要支付 LINK 代币给 Oracle。
+
+# Provable
+
+- 文档：https://docs.provable.xyz
+- 示例代码：https://github.com/provable-things/ethereum-examples
+
+provable.xyz （即原来的 oraclize.it ）是知名的中心化预言机平台。
+- 其解决方案是保证数据获取过程是真实且未经篡改的。具体措施包括：
+    - 硬件上使用  TEE（ Trusted Execution Environments 可信执行环境）
+    - 在提供数据时，会为该数据提供一系列认证证明（Authenticity Proofs， 如 TLSNotary Proof ）。
+- 其数据源可以为 URL、随机数、IPFS 等。
+- 使用 provable 需要支付一定 ETH 作为 Provable fee 和调用 `__callback` 的费用。
+
+使用 Provable 调用 API 示例如下，参考：https://docs.provable.xyz/#ethereum-quick-start
+```
+pragma solidity ^0.4.22;
+import "github.com/provable-things/ethereum-api/provableAPI_0.4.25.sol";
+
+contract ExampleContract is usingProvable {
+
+   string public ETHUSD;
+   event LogConstructorInitiated(string nextStep);
+   event LogPriceUpdated(string price);
+   event LogNewProvableQuery(string description);
+
+   function ExampleContract() payable {
+       LogConstructorInitiated("Constructor was initiated. Call 'updatePrice()' to send the Provable Query.");
+   }
+
+   function __callback(bytes32 myid, string result) {
+       if (msg.sender != provable_cbAddress()) revert();
+       ETHUSD = result;
+       LogPriceUpdated(result);
+   }
+
+   function updatePrice() payable {
+       if (provable_getPrice("URL") > this.balance) {
+           LogNewProvableQuery("Provable query was NOT sent, please add some ETH to cover for the query fee");
+       } else {
+           LogNewProvableQuery("Provable query was sent, standing by for the answer..");
+           provable_query("URL", "json(https://api.pro.coinbase.com/products/ETH-USD/ticker).price");
+       }
+   }
+}
+```
+
+# Uniswap Oracle
+
+Uniswap 是 DeFi 领域 lead 级的去中心化交易所（DEX），使用自动做市商（AMM）机制，使用恒定乘积做市商模型（ Constant Product Market Maker Model，x * y = k） 无需进行买卖撮合。
+
+早期 Uniswap V1 使用 Vyper 语言编写，只支持 ETH-ERC20 交易对，并且预言机没有使用时间加权平均价格（Time-weighted average prices， TWAP）进行报价，容易被操纵。 目前不再维护，下文分析主要基于 Uniswap V2/V3 代码。
+
+参考：
+- Uniswap V2 Oracle
+    - Uniswap V2 Docs: Building an Oracle https://docs.uniswap.org/protocol/V2/guides/smart-contract-integration/building-an-oracle
+    - Uniswap V2 periphery 中的预言机示例 （**最直观**） https://github.com/Uniswap/v2-periphery/blob/master/contracts/examples/ExampleOracleSimple.sol
+    - Using the new Uniswap v2 as oracle in your contracts https://soliditydeveloper.com/uniswap-oracle
+    - Using Uniswap V2 Oracle With Storage Proofs https://medium.com/@epheph/using-uniswap-v2-oracle-with-storage-proofs-3530e699e1d3
+    - Keydonix 的不需要维护主动维护历史的 Uniswap v2 Oracle 实现 https://github.com/Keydonix/uniswap-oracle
+        - 先要链下获取 pair storage 的历史信息和 proof 信息，传入链上进行验证。
+        - 可以验证至多 256 个区块的历史信息，从而获取近 256 个区块内任意时间窗口的 TWAP。
+- Uniswap V3 Oralce
+    - Uniswap v3 oracle docs https://docs.uniswap.org/protocol/concepts/V3-overview/oracle
+    - Uniswap v3-periphery OracleLibrary https://github.com/Uniswap/v3-periphery/blob/main/contracts/libraries/OracleLibrary.sol 
+    - A Guide on Uniswap v3 TWAP Oracle https://tienshaoku.medium.com/a-guide-on-uniswap-v3-twap-oracle-2aa74a4a97c5
+    - Uniswap v3 详解（五）：Oracle 预言机 https://liaoph.com/uniswap-v3-5/
+
+
+## Uniswap V2
+
+Uniswap Pair 是两种代币的流动池。根据 `x * y = k` 公式，合约会保证 x, y 两种代币数量乘积是恒定值。受到此限制，当没有新流动性流入时，要保持 k 恒定，在某些用户使用 y 兑出 x 时，将导致 x 减少 y 增加。数量比例变化后，相比于变化前，同样数量的 x 将能兑出更多的 y，意味着 x 价格升高。当 x 相对 y 的价格高到一定程度时，市场中就会存一些用户会手中的 x 兑换成 y （如可以从 x 相对 y 价格低的其他交易所购买 x 并兑入池中搬砖套利）。最终使 x 相对 y 的价格恢复到市场认可的正常水平。这就是 Uniswap 中自动做市商的基本原理。
+
+一般来说，当币价没有明显波动时，代币池中的两种代币比例也会比较固定，因此通过计算池中两种资产的比例，可以计算出两种代币的相对价格。这就是使用代币池作为预言机的依据。
+
+但是从上面的描述中也可以看出，当用户手中有足够多的资产时（即达到池中资产接近的数量级时。由于闪电贷的出现，这种要求可以比较容易的达成），就可以通过控制池中的两种代币的比例，操纵币价。
+
+下面是操纵 Uniswap 币价的示例代码。测试使用 hardhat 完成，fork ethereum mainnet 并固定在 13718823 区块。
+
+合约代码：
+```
+pragma solidity 0.6.10;
+
+import "hardhat/console.sol";
+
+import "@uniswap/v2-core/contracts/interfaces/IERC20.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Callee.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+import '@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol';
+import '@uniswap/v2-periphery/contracts/libraries/UniswapV2OracleLibrary.sol';
+import '@uniswap/lib/contracts/libraries/FixedPoint.sol';
+
+contract TestOracle {
+    using FixedPoint for *;
+
+    IERC20 WETH = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IERC20 USDT = IERC20(0xdAC17F958D2ee523a2206206994597C13D831ec7);
+    IUniswapV2Factory factory = IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
+    IUniswapV2Router02 router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+
+    IUniswapV2Pair WETH_USDT = IUniswapV2Pair(factory.getPair(address(WETH), address(USDT)));
+    
+    uint    public price0CumulativeLast;
+    uint32  public blockTimestampLast;
+    FixedPoint.uq112x112 public price0Average;
+    constructor() public payable{
+        console.log("Uniswap ETH/USDT LP (UNI-V2)", address(WETH_USDT));
+        price0CumulativeLast = WETH_USDT.price0CumulativeLast();
+        (, , blockTimestampLast) = WETH_USDT.getReserves();
+    }
+
+    // 直接使用池中代币比例计算币价
+    function getPrice() public view returns (uint price){
+        (uint112 reserve0, uint112 reserve1 , ) = WETH_USDT.getReserves();
+        console.log("LP Reserve: WETH", reserve0, "USDT", reserve1);
+        price = reserve1*10**12/reserve0; // WETH decimals 18, USDT decimals 6
+        console.log("Price USDT/WETH=", price);
+    }
+
+    // Uniswap V2 TWAP 计算方法
+    function getTWAP() public returns (uint price){
+        (uint price0Cumulative, , uint32 blockTimestamp) =
+            UniswapV2OracleLibrary.currentCumulativePrices(address(WETH_USDT));
+
+        uint timeElapsed = blockTimestamp - blockTimestampLast;
+        require(timeElapsed > 0, "TimeElapsed is 0");
+        uint avg = (price0Cumulative - price0CumulativeLast) / timeElapsed;
+        // console.log(blockTimestamp, price0Cumulative, blockTimestampLast, price0CumulativeLast);
+
+        price0Average = FixedPoint.uq112x112(uint224(avg));
+        price = price0Average.mul(10**12).decode144();
+        console.log("TWAP: %s TimeElapsed:%s", price, timeElapsed);
+
+        price0CumulativeLast = price0Cumulative;
+        blockTimestampLast = blockTimestamp;
+    }
+
+    // 将 90% 的 USDT 通过 WETH 兑出 
+    function swap() public {
+        (uint112 reserve0, uint112 reserve1, ) = WETH_USDT.getReserves();
+        uint amount = reserve1 * 9/10;
+        uint ethin = router.getAmountIn(amount, reserve0, reserve1);
+        IERC20(address(WETH)).transfer(address(WETH_USDT), ethin);
+        WETH_USDT.swap(0, amount, address(this), new bytes(0));
+        console.log("Swap %s WETH to %s USDT", ethin, amount);
+    }
+
+} 
+```
+
+调用部分代码
+```
+const hre = require("hardhat");
+
+const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const WETH_HOLDER = '0xe78388b4ce79068e89bf8aa7f218ef6b9ab0e9d0'
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+async function mine(delay=1){ // delay n secs.
+    await network.provider.send("evm_increaseTime", [delay])
+    await network.provider.send("evm_mine")
+}
+
+async function main() {
+
+    const TestOracle = await hre.ethers.getContractFactory("TestOracle");
+    const test = await TestOracle.deploy();
+    await test.deployed();
+    console.log("TestOracle deployed to:", test.address);
+
+    // 冒充身份为 WETH_HOLDER 将 WETH 转给 TestOracle 合约
+    // 方便后面操纵币的测试
+    await hre.network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: [WETH_HOLDER],
+    });
+    const signer = await hre.ethers.getSigner(WETH_HOLDER)
+    const IERC20 = await hre.ethers.getContractAt("@uniswap/v2-core/contracts/interfaces/IERC20.sol:IERC20", WETH, signer);
+    let amount = await IERC20.balanceOf(WETH_HOLDER);
+    let tx = await IERC20.transfer(test.address, amount);
+    console.log('Transfer %s WETH from %s to %s', amount, WETH_HOLDER, test.address);
+
+    // 初始币价
+    await test.getPrice();
+    await test.getTWAP();
+    
+    // 为了使时间加权交易更明显，这里延迟一定时间。
+    mine(20);
+    
+    // 进行大量 USDT -> WETH 兑换
+    await test.swap();
+    
+    // 操纵后的币价
+    await test.getPrice();
+    await test.getTWAP();
+}
+
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});
+
+```
+
+执行结果
+```
+Uniswap ETH/USDT LP (UNI-V2) 0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852
+TestOracle deployed to: 0x46b142DD1E924FAb83eCc3c08e4D46E82f005e0E
+Transfer 616000470067125106588220 WETH from 0xe78388b4ce79068e89bf8aa7f218ef6b9ab0e9d0 to 0x46b142DD1E924FAb83eCc3c08e4D46E82f005e0E
+
+// 初始币价
+LP Reserve: WETH 29266148319476795039542 USDT 138544734218893
+Price USDT/WETH= 4733   // 1ETH = $4733
+TWAP: 4733 TimeElapsed:3
+
+// 兑换
+Swap 264187898570989336586524 WETH to 124690260797003 USDT
+
+// 兑换后
+LP Reserve: WETH 293454046890466131626066 USDT 13854473421890
+Price USDT/WETH= 47
+TWAP: 4307 TimeElapsed:22
+```
+
+下面是对上述代码的一些说明和执行解释。
+
+可以看出当大量进行 WETH-USDT 的兑换后，导致 WETH 价格由 4733 USDT 降到了 47 USDT，价格只为原来的 10%。说明直接通过池中比例计算币例作为预言机指导是有风险的，容易被操纵。实际这种方式也就是 Uniswap V1 中的使用方式。
+
+Uniswap V2 中为了缓冲这种攻击，使用时间加权平均价格（ time-weighted average price, TWAP，即将价格存在的时长作为权重取一段时间内的平均值）作为预言机价格。
+
+具体实现上，UniswapV2Pair 对外开放 `price0CumulativeLast` 和 `price1CumulativeLast` 两个变量，表示两种代币的时间累计价格。两个变量在 UniswapV2Pair 维护方式如下：
+```
+    // update reserves and, on the first call per block, price accumulators
+    function _update(uint balance0, uint balance1, uint112 _reserve0, uint112 _reserve1) private {
+        require(balance0 <= uint112(-1) && balance1 <= uint112(-1), 'UniswapV2: OVERFLOW');
+        uint32 blockTimestamp = uint32(block.timestamp % 2**32);
+        uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
+        if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {  
+            // 每个区块只更新一次 *CumulativeLast 变量。
+            // 且更新数据来自前一个区块，即不是实时的信息。
+            // * never overflows, and + overflow is desired
+            price0CumulativeLast += uint(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) * timeElapsed;
+            price1CumulativeLast += uint(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) * timeElapsed;
+        }
+        reserve0 = uint112(balance0);
+        reserve1 = uint112(balance1);
+        blockTimestampLast = blockTimestamp;
+        emit Sync(reserve0, reserve1);
+    }
+```
+通过如下方式则可以计算 `TWAP = (price0CumulativeLast_end - price0CumulativeLast_start)/(blockTimestamp_end - blockTimestamp_start)`。
+
+从上面的结果可以看出，虽然实时价格已经发生了 90% 的下降，但 TWAP 只受到了 10% 左右的影响。
+
+计算如下：
+```
+// 4733 价格持续 20秒
+// 47 价格持续 2 秒（hardhat 默认一个交易一个区块，间隔 1秒）
+(4733 * 20 + 47 * 2)/22 = 4307
+```
+
+Uniswap V2 TWAP Oracle 小结：
+- 优势
+    - 记录每个区块只写入一次，操纵价格攻击要成功需要保证操纵价格的交易在区块末尾，套利交易在下一块头部，难度大。
+    - 累积价格写入的是上一区块的值，抗闪电贷。
+    - 波动小，即使是大资金也难以大幅影响。
+- 不足
+    - 使用需要记录历史信息自行计算，比较麻烦。
+    - TWAP 时长窗口大小没有固定标准，需要开发者自行权衡
+        - 窗口过小易被操纵
+        - 窗口过大实时性差
+
+
+## Uniswap V3
+
+Uniswap V3 为了提高交易池的资金利用率，开始引入集中流动性（Concentrated Liquidity）。具体来说，每个 LP 均可以提供不同价格区间的流动性（将以 NFT 的形式作为流动性凭证），这些池只在代币价格位于其设定的区间内时才能进行交换，用户进行交换时，Uniswap V3 Pool 会对多个流动性进行聚合最终完成交易。这种设定使得 Uniswap V3 整体结构比 Uniswap V2 复杂很多。
+
+为了避免无数个价格区间的情况，Uniswap V3 将价格区间分成若干个离散的点，将价格换成公比为 1.0001（即每两个价格相差万分之一） 的等比数列。为了减少开根号的计算 Uniswap V3 内部保存价格会使用 `\sqrt{price}`，因此相当于使用 `\sqrt{1.0001}` 作为公比，并约定基础价格为 1，即序列第一个价格是 1。通过这个方式就可以使用序列的序号来表示价格。这个序号 i 与价格的关系及可表示的价格范围如下：
+
+```math
+i = \log_{\sqrt{1.0001}}{\sqrt{price}}
+
+i_{min}=−887272, i_{max}=887272
+
+\sqrt{price} = [-2^{64}, 2^{64}]
+```
+
+Uniswap V3 大部分对价格的维护都是以维护 i 的形式。称之为 tick。Uniswap V3 Pool 要保存用户提供的不同流动性整体的情况，会维护 tick map，保存着所有 tick 上对应的流动性值。
+
+因此在使用预言机进行价格查询时，得到的结果也是 tick 形式，需要额外转化成价格。
+
+下面是 Uniswap V3 使用进行操纵币价的示例。
+
+
+合约代码
+```
+pragma solidity 0.7.6;
+pragma abicoder v2;
+
+import "hardhat/console.sol";
+
+import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
+import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
+import '@uniswap/v3-core/contracts/interfaces/IERC20Minimal.sol';
+import '@uniswap/v3-core/contracts/libraries/TickMath.sol';
+
+import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
+import '@uniswap/v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol';
+import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import '@uniswap/v3-periphery/contracts/base/LiquidityManagement.sol';
+import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
+
+import '@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol';
+
+contract TestOracleV3 {
+
+    IERC20Minimal WETH = IERC20Minimal(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IERC20Minimal USDT = IERC20Minimal(0xdAC17F958D2ee523a2206206994597C13D831ec7);
+
+    // https://github.com/Uniswap/v3-periphery/blob/main/deploys.md
+    IUniswapV3Factory factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
+    INonfungiblePositionManager manager = INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
+
+    uint24 fee = 3000;
+    IUniswapV3Pool pool = IUniswapV3Pool(factory.getPool(address(WETH), address(USDT), fee)); // 0.3% fee 0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36
+
+    ISwapRouter router = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    constructor() public {
+        console.log("WETH/USDT 0.3% Pool:", address(pool));
+    }
+
+    function getReverse() public view returns (uint price){
+        uint reserve0 = WETH.balanceOf(address(pool));
+        uint reserve1 = USDT.balanceOf(address(pool));
+        console.log("LP Reserve: WETH", reserve0/(10**18), "USDT", reserve1/(10**6));
+        price = reserve1*10**12/reserve0; // WETH decimals 18, USDT decimals 6
+        console.log("USDT/WETH=", price);
+    }
+
+    function getTickPrice(uint32 secondsAgo) public view returns (uint price) {
+        (
+            int24 arithmeticMeanTick, 
+            uint128 harmonicMeanLiquidity
+        ) = OracleLibrary.consult(address(pool), secondsAgo);
+
+        price = OracleLibrary.getQuoteAtTick(
+            arithmeticMeanTick,
+            10**12, // WETH 18 -> USDT 6
+            address(WETH),
+            address(USDT)
+        );
+        console.log("Tick Price %s s ago:", secondsAgo, price);
+    }
+
+    function swap2(uint ethIn) public{
+        uint amountIn = ethIn * 10**18;
+        WETH.approve(address(router), amountIn);
+
+        ISwapRouter.ExactInputSingleParams memory params =
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: address(WETH),
+                tokenOut: address(USDT),
+                fee: fee,
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: amountIn,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+
+        uint amountOut = router.exactInputSingle(params);
+        console.log("Swap %s WETH to %s USDT", amountIn/(10**18), amountOut/(10**6));
+    }
+
+    function swap() public {
+        uint amountOut = USDT.balanceOf(address(pool)) * 97/100;
+        uint amountIn = WETH.balanceOf(address(this));
+        WETH.approve(address(router), amountIn);
+
+        ISwapRouter.ExactOutputSingleParams memory params =
+            ISwapRouter.ExactOutputSingleParams({
+                tokenIn: address(WETH),
+                tokenOut: address(USDT),
+                fee: fee,
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountOut: amountOut,
+                amountInMaximum: amountIn,
+                sqrtPriceLimitX96: 0
+            });
+        amountIn = router.exactOutputSingle(params);
+
+        WETH.approve(address(router), 0);
+        console.log("Swap %s WETH to %s USDT", amountIn/(10**18), amountOut/(10**6));
+    }
+}
+```
+
+调用代码
+```
+const hre = require("hardhat");
+
+const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const WETH_HOLDER = '0xe78388b4ce79068e89bf8aa7f218ef6b9ab0e9d0'
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+async function mine(delay=1){ // delay n secs.
+    await network.provider.send("evm_increaseTime", [delay])
+    await network.provider.send("evm_mine")
+}
+
+async function main() {
+
+    const TestOracle = await hre.ethers.getContractFactory("TestOracleV3");
+    const test = await TestOracle.deploy();
+    await test.deployed();
+    console.log("TestOracle deployed to:", test.address);
+
+    // 冒充身份
+    await hre.network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: [WETH_HOLDER],
+    });
+    // 发起交易
+    const signer = await hre.ethers.getSigner(WETH_HOLDER)
+    const IERC20 = await hre.ethers.getContractAt("@uniswap/v2-core/contracts/interfaces/IERC20.sol:IERC20", WETH, signer);
+    let amount = await IERC20.balanceOf(WETH_HOLDER);
+    let tx = await IERC20.transfer(test.address, amount);
+    console.log('Transfer %s WETH from %s to %s', parseInt(amount/(10**18)), WETH_HOLDER, test.address);
+
+    await test.getReverse();
+    await test.getTickPrice(1);
+    await test.getTickPrice(3600);
+    await test.swap();
+    await test.swap2(1); // 需要在新区块更新预言机
+    await test.getReverse();
+    await test.getTickPrice(1);
+    await test.getTickPrice(3600);
+}
+
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});
+```
+输出
+```
+WETH/USDT 0.3% Pool: 0x4e68ccd3e89f51c3074ca5072bbac773960dfa36
+TestOracle deployed to: 0x46b142DD1E924FAb83eCc3c08e4D46E82f005e0E
+Transfer 616000 WETH from 0xe78388b4ce79068e89bf8aa7f218ef6b9ab0e9d0 to 0x46b142DD1E924FAb83eCc3c08e4D46E82f005e0E
+LP Reserve: WETH 3507 USDT 112521747
+USDT/WETH= 32079
+Tick Price 1 s ago: 4730
+Tick Price 3600 s ago: 4739
+Swap 31848 WETH to 109146094 USDT
+Swap 1 WETH to 1480 USDT
+LP Reserve: WETH 35357 USDT 3374171
+USDT/WETH= 95
+Tick Price 1 s ago: 1485
+Tick Price 3600 s ago: 4738
+```
+可以看到，通过进行货币兑换，仍能在一定程度上操纵币价。但当加大 TWAP 时间窗口时，这种影响会明显缩小。除了 swap，也可以通过提供流动性的方式影响币价，原理类似，不再展示代码。
+
+
+Uniswap V3 相比 Uniswap V2：
+- Uniswap V3 因为集中流动性的存在，在某一币价范围，可能池内一些 LP 是不提供流动性，因此不能直接通过 reserve 计算实时币价。
+- TWAP 不需要用户方主动维护累积币价，支持在池内维护最多 65535 个区块（约9天）的币价累积值。
+- TWAP 不是使用价币的时间加权平均值，而是使用 tick 的时间加权平均值，相当于对数价格的时间加权平均值。好处是
+    - 在 Uniswap V3 下实现上比较直接。
+    - 对数平均值相对算术平均值波动更小。
+    - 只需要维护一个币种的币价即可（另一个是倒数）。算术平均的方法需要同时维护两个。
+
+
+# Uniswap VS ChainLink
+
+Uniswap 优势
+- 低成本（不需要额外支付 LINK 查询费用）
+- 实时性好（可以低成本支持高频实时币价查询）
+- 不依赖链下系统，使用方便。
+
+Uniswap 不足：
+- 只支持币价类预言。
+- 使用方式复杂，缺少标准。使用不同易受攻击。
+- 会受到不同程度的操纵攻击。
+
+ChainLink 优势：
+- 支持多种线下数据
+- 使用直接（API 比较直观易用，不易出现使用错误）
+- 攻击成本高（需要配合链下攻击，难度大）
+
+ChainLink 不足：
+- 成本高（有时需要支付查询费用）
+- 实时性差（无法做到完全实时；高频同步成本高）
+- 需要链下系统配合，如果链下系统受攻击会导致预言机失灵。
