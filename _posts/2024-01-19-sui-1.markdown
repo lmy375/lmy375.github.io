@@ -295,5 +295,5 @@ RPC 文档见 https://docs.sui.io/sui-api-ref
 }
 ```
 
-交易 binary data 使 [Binary Canonical Serialization, BCS](https://github.com/diem/bcs) 进行序列化
+交易 binary data 使用 [Binary Canonical Serialization, BCS](https://github.com/diem/bcs) 进行序列化。
 
