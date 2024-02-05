@@ -42,6 +42,6 @@ This is index page.
 <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css">
 <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
 
-<span id="busuanzi_value_page_pv"><i class="fa fa-spinner fa-spin"></i></span> Page Page Views
-<span id="busuanzi_value_site_pv"><i class="fa fa-spinner fa-spin"></i></span> Site Page Views
-<span id="busuanzi_value_site_uv"><i class="fa fa-spinner fa-spin"></i></span> Site Unique Visitors
+- <span id="busuanzi_value_page_pv"><i class="fa fa-spinner fa-spin"></i></span> Page Page Views
+- <span id="busuanzi_value_site_pv"><i class="fa fa-spinner fa-spin"></i></span> Site Page Views
+- <span id="busuanzi_value_site_uv"><i class="fa fa-spinner fa-spin"></i></span> Site Unique Visitors
