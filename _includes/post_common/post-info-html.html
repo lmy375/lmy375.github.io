@@ -4,6 +4,8 @@
   Licensed under MIT
 {%-endcomment-%}
 
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
 <div class="meta">
   {%comment-%} post date {%-endcomment-%}
   <small>
@@ -13,6 +15,10 @@
   <small>
     &nbsp;&nbsp;&nbsp;<span><i class="fa fa-clock-o"></i>&nbsp;{{include.read_time}}</span>
   </small>
+  <small>
+    &nbsp;&nbsp;&nbsp;<i class="fa fa-eye"></i>&nbsp; <span id="busuanzi_value_page_pv"><i class="fa fa-spinner fa-spin"></i></span> views
+  </small>
+
   {%comment-%} comment count  {%-endcomment-%}
   {%- if site.data.conf.posts.comments.engine == "disqus" and site.data.conf.posts.comments.disqus.comment_count %}
   <small class="meta-link" {{include.comment_style}}>
