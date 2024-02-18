@@ -15,7 +15,7 @@
   <small>
     &nbsp;&nbsp;&nbsp;<span><i class="fa fa-clock-o"></i>&nbsp;{{include.read_time}}</span>
   </small>
-  <small>
+  <small id="busuanzi_small">
     &nbsp;&nbsp;&nbsp;<i class="fa fa-eye"></i>&nbsp; <span id="busuanzi_value_page_pv"><i class="fa fa-spinner fa-spin"></i></span> views
   </small>
 
@@ -27,3 +27,9 @@
   </small>
   {% endif -%}
 </div>
+
+<script>
+  try{
+    if(location.pathname=='/tabs/blog/') $('#busuanzi_small').hide();
+  }catch(e){}
+</script>

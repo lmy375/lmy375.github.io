@@ -8,6 +8,8 @@ date: 2024-02-18 10:00:00 +0800
 
 ---
 
+OP stack 核心组件、Optimism 架构、L1/L2 通信机制。
+
 # OP stack 概述
 
 - 官网 https://www.optimism.io/
