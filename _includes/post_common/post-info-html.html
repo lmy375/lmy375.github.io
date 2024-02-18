@@ -15,8 +15,8 @@
   <small>
     &nbsp;&nbsp;&nbsp;<span><i class="fa fa-clock-o"></i>&nbsp;{{include.read_time}}</span>
   </small>
-  {%- if page_url != "/tabs/blog/" %}
-  {{ page_url }}
+  {%- if include.current_page_url != "/tabs/blog/" %}
+  {{ include.current_page_url }}
   <small id="busuanzi_small">
     &nbsp;&nbsp;&nbsp;<i class="fa fa-eye"></i>&nbsp; <span id="busuanzi_value_page_pv"><i class="fa fa-spinner fa-spin"></i></span> views
   </small>
