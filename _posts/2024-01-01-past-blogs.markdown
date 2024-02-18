@@ -8,6 +8,13 @@ date: 2024-01-01 10:00:00 +0800
 
 ---
 
+<!-- outline-start -->
+
+其他平台上的博文记录。
+
+<!-- outline-end -->
+
+
 - 2017-03-10 [VMProtect 3.09 虚拟机架构浅析](https://www.52pojie.cn/thread-586130-1-1.html)
 - 2017-05-13 [通过编译优化进行VMP代码还原](https://bbs.kanxue.com/thread-217588.htm)
 - 2018-03-18 [awesome-vmp: 虚拟化保护（VMP壳）分析相关资料](https://github.com/lmy375/awesome-vmp)
