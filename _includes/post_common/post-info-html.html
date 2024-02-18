@@ -4,7 +4,6 @@
   Licensed under MIT
 {%-endcomment-%}
 
-<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
 
 <div class="meta">
   {%comment-%} post date {%-endcomment-%}
@@ -15,9 +14,9 @@
   <small>
     &nbsp;&nbsp;&nbsp;<span><i class="fa fa-clock-o"></i>&nbsp;{{include.read_time}}</span>
   </small>
-  {%- if include.current_page_url != "/tabs/blog/" %}
-  {{ include.current_page_url }}
-  <small id="busuanzi_small">
+  {%- if include.url != "/tabs/blog/" %}
+  <p>{{include.url}}</p>
+  <small>
     &nbsp;&nbsp;&nbsp;<i class="fa fa-eye"></i>&nbsp; <span id="busuanzi_value_page_pv"><i class="fa fa-spinner fa-spin"></i></span> views
   </small>
   {% endif -%}
@@ -30,16 +29,3 @@
   </small>
   {% endif -%}
 </div>
-
-<!-- <script>
-  try{
-    if(location.pathname=='/tabs/blog/'){
-      while(1){
-        let s = $('#busuanzi_small');
-        if(s.length){
-          s.remove();
-        }
-      }
-    } 
-  }catch(e){}
-</script> -->
