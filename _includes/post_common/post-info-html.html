@@ -15,9 +15,12 @@
   <small>
     &nbsp;&nbsp;&nbsp;<span><i class="fa fa-clock-o"></i>&nbsp;{{include.read_time}}</span>
   </small>
+  {%- if page_url != "/tabs/blog/" %}
+  {{ page_url }}
   <small id="busuanzi_small">
     &nbsp;&nbsp;&nbsp;<i class="fa fa-eye"></i>&nbsp; <span id="busuanzi_value_page_pv"><i class="fa fa-spinner fa-spin"></i></span> views
   </small>
+  {% endif -%}
 
   {%comment-%} comment count  {%-endcomment-%}
   {%- if site.data.conf.posts.comments.engine == "disqus" and site.data.conf.posts.comments.disqus.comment_count %}
@@ -28,8 +31,15 @@
   {% endif -%}
 </div>
 
-<script>
+<!-- <script>
   try{
-    if(location.pathname=='/tabs/blog/') $('#busuanzi_small').hide();
+    if(location.pathname=='/tabs/blog/'){
+      while(1){
+        let s = $('#busuanzi_small');
+        if(s.length){
+          s.remove();
+        }
+      }
+    } 
   }catch(e){}
-</script>
+</script> -->
