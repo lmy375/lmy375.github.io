@@ -5,6 +5,7 @@
 {%-endcomment-%}
 
 
+
 <div class="meta">
   {%comment-%} post date {%-endcomment-%}
   <small>
@@ -14,9 +15,7 @@
   <small>
     &nbsp;&nbsp;&nbsp;<span><i class="fa fa-clock-o"></i>&nbsp;{{include.read_time}}</span>
   </small>
-  {%- if include.url != "/tabs/blog/" %}
-  <p>{{include.url}}</p>
-  <p>{{page.url}}</p>
+  {%- if page.url != "/tabs/blog/" %}
   <small>
     &nbsp;&nbsp;&nbsp;<i class="fa fa-eye"></i>&nbsp; <span id="busuanzi_value_page_pv"><i class="fa fa-spinner fa-spin"></i></span> views
   </small>
