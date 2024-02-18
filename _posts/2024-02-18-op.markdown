@@ -1,0 +1,244 @@
+---
+lng_pair: id_op
+title: Optimism 实用学习笔记
+category: L2
+tags: [L2]
+img: ":wave.png"
+date: 2024-02-18 10:00:00 +0800
+
+---
+
+# OP stack 概述
+
+- 官网 https://www.optimism.io/
+- 文档 https://docs.optimism.io/
+- 官方跨链桥 https://app.optimism.io/bridge/deposit
+- OP 服务状态 https://status.optimism.io/ 
+- 合约地址 https://docs.optimism.io/chain/addresses
+- OP Stack Specs https://specs.optimism.io/root.html
+- [OP 区块链浏览器](https://optimistic.etherscan.io/) 展示了许多 OP L2 特有的信息
+    - [L2 Blocks](https://optimistic.etherscan.io/blocks) OP 上的区块
+    - [Transaction Batches](https://optimistic.etherscan.io/batches)，均为 batcher 向 L1 地址提交 L2 batch 的交易
+    - [State Batches](https://optimistic.etherscan.io/statebatches) 为 state root commit 交易
+    - [L1→L2 Transactions](https://optimistic.etherscan.io/txsEnqueued) L1 到 L2 的跨链交易（deposit）
+    - [L2→L1 Transactions](https://optimistic.etherscan.io/txsExit) L2 到 L1 的跨链交易（withdrawal）
+
+OP Stack 由 Optimism Collective 维护，是支持 Optimism 链的开源完整技术栈，其目标是实现 [Superchain](https://docs.optimism.io/stack/explainer)：共享 L1，共享 Bridge，可互相通信的多链网络。
+
+OP Stack 包括如下部分：
+- Data Availability, DA
+    - 保存完整的 OP 交易数据。可从 DA 中同步、构建完整的链。
+    - Ethereum DA 是最常见的解决方案，使用 calldata, blob 保存交易信息
+    - 使用 [op-batcher](https://github.com/ethereum-optimism/optimism/tree/v1.1.4/op-batcher) 模块向 L1 提交交易 batch 
+- Sequencing
+    - Sequencer 决定 L2 交易顺序，确定其上传 DA 的方式。
+    - 目前 OP 架构使用单一的 Sequencer
+    - 未来可能会使用多 Sequencer 架构，由多个 Sequencer 择一出块。
+- Derivation
+    - 定义从 DA 解析原始数据并传给 Execution Layer 的标准 API
+    - 使用 [op-node](https://github.com/ethereum-optimism/optimism/tree/v1.1.4/op-node) 模块完成。L1 发送给 L2 的交易即由 `op-node` 监听并处理。
+- Execution
+    - 执行交易，完成 L2 状态转换。
+    - 与以太坊 EVM 基本一致，主要添加了 L1-L2 跨链交易处理逻辑和 收取 L1 Data Fee 逻辑。
+    - 使用 [op-geth](https://github.com/ethereum-optimism/op-geth/tree/09ade3df6d1d3a4f8f308553825348be132bc960) 模块完成
+- Settlement Layer
+    - 结算层，主要让外部确认链的共识状态。
+    - 当 L2 数据推送到 L1 DA 并在 L1 finalize 时，L2 状态也是 finalized。这些数据无法删除和修改。但结算层会验证这些数据的正确性，可能拒绝。如果验证通过，则接受这个数据，从而完成结算（解锁资产）
+    - `op-proposer` 模块会将 L2 的状态更新以 merkle tree root hash 的形式（通常称为 state root）提交到 L1。主要验证的就是这个 state root 的正确性。
+    - 可以有以下多种验证方式。
+        - Attestation-based Fault Proof（目前的方案）：Proposer 提交 proposals 后在挑战期（challenge period）内如果多签没有否决，则状态生效。此方案将信任假设建立在多签上。
+        - Fault Proof Optimistic Settlement：与上面方案类似，不过否决不依赖多签，而是使用欺诈证明（Fault Proof ），任何人均可在挑战期内提交有效的 Fault Proof。此方案的信任假设是 Fault Proof 可以被正确的构建并在挑战期内提交
+        - Validity Proof Settlement：使用数学证明 L2 状态更新，通常使用 ZK Proof。此方案的信任假设 Validity Proof 可以被正确构建并提交。此方案无挑战期，Validity Proof 提交后则完成结算。
+- Governance
+    - MultiSig Contracts （目前的方案）：使用多签管理关键系统合约、桥合约的参数配置及升级权限。
+    - Governance Tokens：使用 Token 进行 DAO 治理。
+
+L2 交易 rollup 到 L1 的过程：
+- Sequencer 收集 L2 交易
+- 交易提交给 `op-geth` 进行执行，完成状态转换。
+- 新的 state root 由 `op-proposer` 提交到 L1 上的 `L2OutputOracle`。（7天挑战期过后最终生效）
+- 此与同时，`op-batcher` 将交易压缩打包提交到 L1 
+
+> 注：如果发生 [Sequencer Outages](https://docs.optimism.io/stack/protocol/outages#bypassing-the-sequencer) ，可以与 L1 OptimismPortal 交互提交 L2 交易。正常情况下在 OptimismPortal 上提交的交易会也会被 Sequencer 处理。如果超过 24 小时未处理，则从合约层自动包含进 L2。
+
+# 协议分析
+
+## 合约概述
+
+L1 合约
+- [L2OutputOracle](https://etherscan.io/address/0xdfe97868233d1aa22e815a266982f2cf17685a27) 保存 L2 的 state root
+- [OptimismPortal](https://etherscan.io/address/0xbeb5fc579115071764c7423a4f12edde41f106ed) 是 L1 -> L2 的 low-level 通信 API。跨链的 ETH 锁在这里。
+- [L1CrossDomainMessenger](https://etherscan.io/address/0x25ace71c97b33cc4729cf772ae268934f7ab5fa1) `sendMessage()` 方法发送 L1 - L2 消息。底层调用 OptimismPortal
+- [L1StandardBridge](https://etherscan.io/address/0x99c9fc46f92e8a1c0dec1b1747d010903e884be1) 跨链桥，跨链的 ERC20 锁在这里。底层调用 L1CrossDomainMessenger
+
+L2 合约：
+- L1Block 获取 L1 区块信息
+- SequencerFeeVault L2 手续费收款地址
+- [L2ToL1MessagePasser: 0x4200..0016](https://optimistic.etherscan.io/address/0x4200000000000000000000000000000000000016) 发起提款的合约
+- [L2CrossDomainMessenger: 0x4200..0007 ](https://optimistic.etherscan.io/address/0x4200000000000000000000000000000000000007) 处理 L2 - L1 通信，底层调用 L2ToL1MessagePasser
+- [L2StandardBridge: 0x4200..0010](https://optimistic.etherscan.io/address/0x4200000000000000000000000000000000000010#code) L2 跨链桥，底层调用 L2CrossDomainMessenger
+- WETH9 ETH wrapper Token
+
+## Transaction Batches & L2 Blocks
+
+Optimism 链采用 `Optimistic Rollup` 方案。L2 区块信息保存在 L1 上。具体来说由 `op-batcher` 提交 Transaction Batches 到 [L1 地址 0xff00..0010](https://etherscan.io/address/0xff00000000000000000000000000000000000010) 上。[这是一笔示例交易](https://etherscan.io/tx/0xc9bd34f6685ccef4165860fee7875a938491f2242300feefe34f795cd58e58af)
+- from 为 [Optimism: Batcher 地址](https://etherscan.io/address/0x6887246668a3b87f54deb3b94ba47a6f63f32985)
+- 以目前来看大约 3 分钟左右提交一次 batch。每个 batch 大约 2M gas （以太坊 block gas limit 为 30M）
+- 目前使用 calldata 保存 batch 数据。在坎昆升级后，将改为 blob 存储。
+
+OP L2 Blocks 从区块链浏览器角度上看，与 ETH 区别不大。这是 [116324018 号区块的示例](https://optimistic.etherscan.io/block/116324018) 。
+- 每个区块的 Gas limit 仍为 30,000,000。
+- 由于 L2 出块较快，因此每个 L2 block 包含的交易通常较少，为 10 ~ 20 左右。
+
+Bedrock 版本 Sequencer 使用 Private mempool。每 2 秒钟产生一个区块。除了 L2 提交给 sequencer 的交易会打包外，L1 提交的交易也必须被打包。每个 L2 block 有一个 epoch，标识其关联的 L1 block（通常是 L2 block 前几分钟产生的 L1 block）。每个 epoch 中的第一个 L2 block 需要包含 L1 block 提交的跨链交易。如果不包含则可以被挑战。
+
+## State Batches
+
+State Batches `op-proposer` 向 L1 提交 L2 state root 的交易。
+
+OP Bedrock 升级后的[第一笔交易](https://optimistic.etherscan.io/statebatch/0?isbedrock=true)
+
+OP Bedrock 升级前的[最后一笔交易](https://optimistic.etherscan.io/statebatch/111419)
+
+现在我们只关注 Bedrock 升级后的情况，以[这笔交易](https://etherscan.io/tx/0x4da5b5c17f8189f321b9bb6bf672173fbe4a7d74d370fc917f19917bb049cf9e)为例
+
+由 [Optimism: State Root Proposer](https://etherscan.io/address/0x473300df21d047806a082244b417f96b32f13a33) 发起调用。目标合约为 [L2OutputOracle](https://etherscan.io/address/0xdfe97868233d1aa22e815a266982f2cf17685a27)。调用其 `proposeL2Output()` 方法。
+
+参数包括：
+- `_outputRoot` L2 state root
+- `_l2BlockNumber` L2 区块高度
+- `_l1BlockHash` L2 block epoch 对应的 L1 区块 hash。
+- `_l1BlockNumber` L2 block epoch 对应的 L1 区块高度。注意要和 `proposeL2Output()` 交易所在的区块高度相区分，通常低 6-7 个区块。
+
+state root 表示 L2 的状态变化。Fraud Proof 就是针对这个值进行挑战。
+
+## Deposit
+
+Deposit 交易指 L1 发往 L2 的交易。大概流程是：
+1. L1 上调用 `L1CrossDomainMessenger.sendMessage()` 发送消息时需要设置 gaslimit 并支付相应的 L2 gas。作用是保护 L2 节点免受 DoS 攻击。
+2. 调用到 `L1CrossDomainMessenger.depositTransaction()` ， 生成  `TransactionDeposited` event
+3. `op-node` 监听该事件，调用 `L2CrossDomainMessenger.relayMessage()` 在 L2 上转发消息，执行 L2 合约调用。
+
+示例：
+- [L1 交易](https://phalcon.blocksec.com/explorer/tx/eth/0xeef732ffd128c05447e4b0bedd995ee88016400c76a8188296d27ef90652c4bf)
+- [L2 交易](https://phalcon.blocksec.com/explorer/tx/optimism/0x596658c5e19dce278c4f4c09f557b3e53b6fbb65ec63323e5c8aaae61b755f41)
+
+L1 交易是一笔 ETH 跨链交易，
+- 调用 `L1StandardBridge.depositETH()`
+- 调用 [`L1CrossDomainMessenger.sendMessage()`](https://etherscan.io/address/0x25ace71c97b33cc4729cf772ae268934f7ab5fa1)
+- 调用 `OptimismPortal.depositTransaction()` ETH 最终锁在 [OptimismPortal 合约](https://etherscan.io/address/0xbeb5fc579115071764c7423a4f12edde41f106ed) 中。发送给 L2 的 Message 是要求调用 `L2CrossDomainMessenger.relayMessage()`。
+- OptimismPortal 中提交的交易，`op-node` 必须在 L2 区块中包含，否则可以被挑战。
+
+L2 交易完成 ETH 转账
+- 交易 sender 是 [Optimism: Aliased L1 Cross-Domain Messenger](https://optimistic.etherscan.io/address/0x36bde71c97b33cc4729cf772ae268934f7ab70b2) 这个地址是 L1CrossDomainMessenger 的 alias。该地址上不存有 ETH，但其发起的交易可携带 value，相当于可以进行 ETH 铸币。
+- 交易 to 由 L1 调用时指定，这里是 [L2CrossDomainMessenger ](https://optimistic.etherscan.io/address/0x4200000000000000000000000000000000000007)
+- 调用 `L2CrossDomainMessenger.relayMessage()`，这个 message
+    - sender 是 [Optimism: Gateway](https://optimistic.etherscan.io/address/0x99c9fc46f92e8a1c0dec1b1747d010903e884be1)
+    - 调用 `L2StandardBridge.finalizeBridgeETH()`
+    - 完成 ETH 转账。接收地址是 L1 交易的 sender。
+
+## Withdrawal
+
+Withdrawal 交易指 L2 发往 L1 的交易。大概流程为：
+1. L2 上调用 `L2CrossDomainMessenger.sendMessage()`
+2. 调用到 `L2ToL1MessagePasser.initiateWithdrawal()` 生成 `MessagePassed` 事件。已发送的消息保存在 `sentMessages` storage 中。
+3. `op-proposer` 提交的 root hash 中包含 `sentMessages` 的变化
+4. 链下[SDK](https://sdk.optimism.io/classes/crosschainmessenger#proveMessage-2) 监测 `MessagePassed` 事件，生成 proof，调用 L1 的 `OptimismPortal.proveWithdrawalTransaction()`
+5. 挑战期过后，可以调用 `OptimismPortal.finalizeWithdrawalTransaction()` 发起消息中对 L1 合约的调用。
+
+示例：
+- [L2 交易](https://phalcon.blocksec.com/explorer/tx/optimism/0x7b46b8f17d4a62c23dea61336177c935868a200d887052860df76000ae9055aa)
+- [Prove 交易](https://phalcon.blocksec.com/explorer/tx/eth/0x38ee26b033f86b861a4af7d4cd40107818275e2a70387ea88126ea2666607062)
+- [Finalize 交易](https://phalcon.blocksec.com/explorer/tx/eth/0x2c6f66c3de56ea478ce15cba290dd39ff71c3352a46286faae1ff51ef70e8b1c)
+
+L2 交易是一笔 withdraw 交易
+- 调用 `L2StandardBridge.withdraw()` 指定提款 token 和数量等。
+- 这里会 burn 掉对应的 L2StandardERC20
+- 然后调用 `L2CrossDomainMessenger.sendMessage()`
+- 最终调用 `L2ToL1MessagePasser.initiateWithdrawal()` 生成 `MessagePassed` event
+
+Prove 交由链下监测 `MessagePassed` 事件，调用 `OptimismPortal.proveWithdrawalTransaction()`。merkle proof 证明通过后，结果会保存在 `provenWithdrawals` storage 变量中。同时记录当前的时间。
+
+Finalize 交易在挑战期过后发起，调用 `OptimismPortal.finalizeWithdrawalTransaction()`
+- 这里 sender 是 0x4200000000000000000000000000000000000007
+- 调用 `L1CrossDomainMessenger.relayMessage()`
+    - 这个 sender 是 0x4200000000000000000000000000000000000010
+    - 调用 `L1StandardBridge.finalizeBridgeERC20()`
+        - 完成 ERC20 转账。
+
+# 与以太坊的差异
+
+整体 EVM 等价。[EVM Opcodes 差异](https://docs.optimism.io/chain/differences#opcodes)包括：
+- `COINBASE` 返回 Sequencer's fee wallet，每个区块都不变。
+- `PREVRANDAO` 返回 RANDAO 的伪随机数
+- `ORIGIN`, `CALLER` 如果是由合约触发的 L1 到 L2 的跨链交易，这里返回该合约的 aliased address
+
+[Address Aliasing](https://docs.optimism.io/chain/differences#address-aliasing) 是处理跨链交易时的一种地址映射
+- 如果 L1 sender 是 EOA，则 L2 sender 也是该 EOA
+- 如果 L1 sender 是合约，则 L2 sender 是 `L1 sender + 0x1111000000000000000000000000000000001111`。之所以这样处理是因为 L1 和 L2 的合约可能地址相同但内容不同，因此区别处理。
+
+[手续费处理](https://docs.optimism.io/stack/transactions/fees)：OP 的手续费包括 L2 Execution Gas Fee + L1 Data Fee。
+- L2 Execution Gas Fee 的 gas 计算逻辑与以太坊完全一致，并且支持 EIP-1559。只是 gas price 相比 L1 低很多。这部分手续费支持给 Sequencer's fee wallet
+- L1 Data Fee 是交易 Rollup 后提交到 L1 上要支付给 L1 的手续费。坎昆升级前，这部分数据使用 calldata 保存，受主网当前 base fee 的影响。坎昆升级后，这部分数据使用 blob 保存，受 blob base fee 影响。L1 数据费可通过调用 [OP: Gas Oracle 合约]( https://optimistic.etherscan.io/address/0x420000000000000000000000000000000000000f) 预估。
+- 通常一笔交易中 L1 Data Fee 是决定性因素，占比 >90%
+
+内存池：OP 目前没有公开内存池，Sequencer 按手续费高低进行[交易排序](https://docs.optimism.io/chain/differences#mempool-rules)。
+
+# 安全模型
+
+[Security Model](https://docs.optimism.io/chain/security/faq)
+- 目前核心合约的更新权限依赖于多签钱包。
+- 目前没有实现 fault proof。如果发现问题，则由多签进行更新。
+- 未来 fault proof 上线，会移除多签特权。
+
+OP 当前架构中有如下[特权地址](https://docs.optimism.io/chain/security/privileged-roles)：
+- [Batcher](https://etherscan.io/address/0x6887246668a3b87F54DeB3b94Ba47a6f63F32985) 提交交易打包 rollup
+- [Proposer](https://etherscan.io/address/0x473300df21D047806A082244b417f96b32f13A33) 提交 L2 state roots
+- [MintManager](https://optimistic.etherscan.io/address/0x5c4e7ba1e219e47948e6e3f55019a647ba501005) 可以 Mint OP
+- [System Config Owner Safe 5/7](https://etherscan.io/address/0x9BA6e03D8B90dE867373Db8cF1A58d2F7F006b3A#code) 
+    - 可配置 OP 在 L1 的系统信息 SystemConfig 
+    - 可调用 deleteL2Outputs() 删除错误的 state commit （未来会变成 fault proof）
+    - L1 ProxyAdmin Owner，有升级权限
+    - 可 Pause OptimismPortal
+- [L2 ProxyAdmin Owner](https://optimistic.etherscan.io/address/0x7871d1187a97cbbe40710ac119aa3d412944e4fe)
+    - 可升级大部分 L2 Proxy 升级权限
+
+
+# Fault Proof
+
+OP Fault Proof 介绍视频 https://youtu.be/nIN5sNc6nQM
+
+OP stack 的 Fault Proof System 被设计成模块化的，可以支持乐观证明，错误证明（ZK Proof）等多种证明模式。系统分为三个模块：
+- Fault Proof Program (FPP)
+- Fault Proof Virtual Machine (FPVM)
+- Dispute game protocol
+
+
+`DisputeGame` 是用于检查 32 bytes root（此场景下称为 `Claim`）是否有效（true/false）的状态机。`DisputeGame` 本身不包含具体功能，更多的是对 Fault Proof 问题进行一种抽象，以模块化的对外提供统一的接口（`IDisputeGame`）。Dispute game protocol 协议中支持向 `DisputeGameFactory` 注册不同的 `DisputeGame` 以解决不同类型的争议。
+
+`FaultDisputeGame` 是 OP 实现的用于验证程序错误的 `DisputeGame` ，通过检查 `Fault Proof Program` 的 execution trace 来判定 `Claim` 是否有效。`FaultDisputeGame` 设计上可以支持不同的 `Fault Proof Program`。在 OP 场景下，`Fault Proof Program` 是 `Cannon` + `op-program`。进行争议解决时，会通过二分计算 L2 state root 的 execution trace 找到最终出错的指令，并在链上验证这条指令。
+
+如何进行二分查找：最终的 state root 是 merkle tree 的 root，因此是通过 keccak256 得到的。在链下执行 `op-program` 得到 execution trace 后，将所有计算 keccak256 的中间结果保存下来（Preimage）。可以按照 keccak256 计算的位置分割 trace。如果某个 hash 未在 Preimage 找到，则说明此时计算已经发生错误。如果 hash 可以在 Preimage 中找到，则可进一步检查 Preimage 的 hash。以此二分下去，最终定位到产生错误的指令。
+
+链下的模拟执行过程由 `Cannon` 完成。`Cannon` 是 Optimism 的 `Fault Proof Virtual Machine (FPVM)`。
+```
+It's Go code
+... that runs an EVM
+... emulating a MIPS machine
+... running compiled Go code
+... that runs an EVM
+```
+`Cannon` 执行 `op-program` 生成 `Claim` 的 `witness data`。
+
+链上则使用两个合约进行验证：
+- `MIPS`：链上实现的 MIPS VM，同时要 mock read/write linux syscall
+- `PreimageOracle`：链上保存 Preimage 数据。
+
+`op-program` 就是 op 中的 `Fault Proof Program (FPP)`。`op-program` 的运行 trace 和结果输出都是确定性的。因此可以链下模拟后进行链上验证。
+
+总结：
+1. `op-challenger` 监听 `L2OutputOracle`，发现异常则调起 `Cannon`
+2. `Cannon` 执行 `op-program`，并二分定位到有问题的指令。生成 `witness data`。其中用到的 preimage 信息来自 `op-preimage`
+3. `op-challenger` 调用 `DisputeGameFactory` 合约创建 `FaultDisputeGame` 实例。
+4. `FaultDisputeGame` 调用 MIPS 链上验证有问题的指令。其中用到的 preimage 信息来自 `PreimageOracle`
+
