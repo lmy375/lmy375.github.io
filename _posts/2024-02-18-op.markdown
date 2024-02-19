@@ -4,7 +4,7 @@ title: Optimism 实用学习笔记
 category: L2
 tags: [L2]
 img: ":wave.png"
-date: 2024-02-18 10:00:00 +0800
+date: 2024-02-19 10:00:00 +0800
 
 ---
 <!-- outline-start -->
@@ -12,8 +12,9 @@ date: 2024-02-18 10:00:00 +0800
 OP stack 核心组件、Optimism 架构、L1/L2 通信机制。
 
 <!-- outline-end -->
-
 # OP stack 概述
+
+> 笔记时间：2024/02/19
 
 - 官网 https://www.optimism.io/
 - 文档 https://docs.optimism.io/
@@ -24,7 +25,7 @@ OP stack 核心组件、Optimism 架构、L1/L2 通信机制。
 - [OP 区块链浏览器](https://optimistic.etherscan.io/) 展示了许多 OP L2 特有的信息
     - [L2 Blocks](https://optimistic.etherscan.io/blocks) OP 上的区块
     - [Transaction Batches](https://optimistic.etherscan.io/batches)，均为 batcher 向 L1 地址提交 L2 batch 的交易
-    - [State Batches](https://optimistic.etherscan.io/statebatches) 为 state root commit 交易
+    - [State Batches](https://optimistic.etherscan.io/statebatches) 为 L2 output root commit 交易
     - [L1→L2 Transactions](https://optimistic.etherscan.io/txsEnqueued) L1 到 L2 的跨链交易（deposit）
     - [L2→L1 Transactions](https://optimistic.etherscan.io/txsExit) L2 到 L1 的跨链交易（withdrawal）
 
@@ -49,7 +50,7 @@ OP Stack 包括如下部分：
 - Settlement Layer
     - 结算层，主要让外部确认链的共识状态。
     - 当 L2 数据推送到 L1 DA 并在 L1 finalize 时，L2 状态也是 finalized。这些数据无法删除和修改。但结算层会验证这些数据的正确性，可能拒绝。如果验证通过，则接受这个数据，从而完成结算（解锁资产）
-    - `op-proposer` 模块会将 L2 的状态更新以 merkle tree root hash 的形式（通常称为 state root）提交到 L1。主要验证的就是这个 state root 的正确性。
+    - `op-proposer` 模块会将 L2 的状态更新以 output root 提交到 L1。主要验证的就是这个 output root 的正确性。
     - 可以有以下多种验证方式。
         - Attestation-based Fault Proof（目前的方案）：Proposer 提交 proposals 后在挑战期（challenge period）内如果多签没有否决，则状态生效。此方案将信任假设建立在多签上。
         - Fault Proof Optimistic Settlement：与上面方案类似，不过否决不依赖多签，而是使用欺诈证明（Fault Proof ），任何人均可在挑战期内提交有效的 Fault Proof。此方案的信任假设是 Fault Proof 可以被正确的构建并在挑战期内提交
@@ -61,7 +62,7 @@ OP Stack 包括如下部分：
 L2 交易 rollup 到 L1 的过程：
 - Sequencer 收集 L2 交易
 - 交易提交给 `op-geth` 进行执行，完成状态转换。
-- 新的 state root 由 `op-proposer` 提交到 L1 上的 `L2OutputOracle`。（7天挑战期过后最终生效）
+- 新的 output root 由 `op-proposer` 提交到 L1 上的 `L2OutputOracle`。（7天挑战期过后最终生效）
 - 此与同时，`op-batcher` 将交易压缩打包提交到 L1 
 
 > 注：如果发生 [Sequencer Outages](https://docs.optimism.io/stack/protocol/outages#bypassing-the-sequencer) ，可以与 L1 OptimismPortal 交互提交 L2 交易。正常情况下在 OptimismPortal 上提交的交易会也会被 Sequencer 处理。如果超过 24 小时未处理，则从合约层自动包含进 L2。
@@ -71,7 +72,7 @@ L2 交易 rollup 到 L1 的过程：
 ## 合约概述
 
 L1 合约
-- [L2OutputOracle](https://etherscan.io/address/0xdfe97868233d1aa22e815a266982f2cf17685a27) 保存 L2 的 state root
+- [L2OutputOracle](https://etherscan.io/address/0xdfe97868233d1aa22e815a266982f2cf17685a27) 保存 L2 的 output root
 - [OptimismPortal](https://etherscan.io/address/0xbeb5fc579115071764c7423a4f12edde41f106ed) 是 L1 -> L2 的 low-level 通信 API。跨链的 ETH 锁在这里。
 - [L1CrossDomainMessenger](https://etherscan.io/address/0x25ace71c97b33cc4729cf772ae268934f7ab5fa1) `sendMessage()` 方法发送 L1 - L2 消息。底层调用 OptimismPortal
 - [L1StandardBridge](https://etherscan.io/address/0x99c9fc46f92e8a1c0dec1b1747d010903e884be1) 跨链桥，跨链的 ERC20 锁在这里。底层调用 L1CrossDomainMessenger
@@ -99,7 +100,7 @@ Bedrock 版本 Sequencer 使用 Private mempool。每 2 秒钟产生一个区块
 
 ## State Batches
 
-State Batches `op-proposer` 向 L1 提交 L2 state root 的交易。
+State Batches `op-proposer` 向 L1 提交 L2 output root 的交易。
 
 OP Bedrock 升级后的[第一笔交易](https://optimistic.etherscan.io/statebatch/0?isbedrock=true)
 
@@ -110,12 +111,14 @@ OP Bedrock 升级前的[最后一笔交易](https://optimistic.etherscan.io/stat
 由 [Optimism: State Root Proposer](https://etherscan.io/address/0x473300df21d047806a082244b417f96b32f13a33) 发起调用。目标合约为 [L2OutputOracle](https://etherscan.io/address/0xdfe97868233d1aa22e815a266982f2cf17685a27)。调用其 `proposeL2Output()` 方法。
 
 参数包括：
-- `_outputRoot` L2 state root
+- `_outputRoot` L2 output root，是 version, state root, message passer storage root, block hash 的 hash。
 - `_l2BlockNumber` L2 区块高度
 - `_l1BlockHash` L2 block epoch 对应的 L1 区块 hash。
 - `_l1BlockNumber` L2 block epoch 对应的 L1 区块高度。注意要和 `proposeL2Output()` 交易所在的区块高度相区分，通常低 6-7 个区块。
 
-state root 表示 L2 的状态变化。Fraud Proof 就是针对这个值进行挑战。
+output root 可以看作是 L2 当前状态的快照。Fraud Proof 就是针对这个值进行挑战。另外要注意，output root 除了 state root 外，还有 message passer storage root （可看作是 message passer 合约 storage 的快照，这个 root 主要用来证明 L2 提款）等信息。
+
+因此 output root 与 state root 不完全等价。但其实 output root 中最关键的信息就是 state root，这个也是 fraud proof 中要挑战的部分。因此某些场景下将 output root 与 state root 表达为同样的含义也是可以的。
 
 ## Deposit
 
@@ -160,7 +163,7 @@ L2 交易是一笔 withdraw 交易
 - 调用 `L2StandardBridge.withdraw()` 指定提款 token 和数量等。
 - 这里会 burn 掉对应的 L2StandardERC20
 - 然后调用 `L2CrossDomainMessenger.sendMessage()`
-- 最终调用 `L2ToL1MessagePasser.initiateWithdrawal()` 生成 `MessagePassed` event
+- 最终调用 `L2ToL1MessagePasser.initiateWithdrawal()` 更新 `sentMessages` storage， 生成 `MessagePassed` event
 
 Prove 交由链下监测 `MessagePassed` 事件，调用 `OptimismPortal.proveWithdrawalTransaction()`。merkle proof 证明通过后，结果会保存在 `provenWithdrawals` storage 变量中。同时记录当前的时间。
 
@@ -171,9 +174,63 @@ Finalize 交易在挑战期过后发起，调用 `OptimismPortal.finalizeWithdra
     - 调用 `L1StandardBridge.finalizeBridgeERC20()`
         - 完成 ERC20 转账。
 
+### Prove & Finalize 详解
+
+Prove 时调用 `OptimismPortal.proveWithdrawalTransaction()`, 函数原型：
+```
+library Types {
+    struct OutputRootProof {
+        bytes32 version;
+        bytes32 stateRoot;
+        bytes32 messagePasserStorageRoot;
+        bytes32 latestBlockhash;
+    }
+
+    struct WithdrawalTransaction {
+        uint256 nonce;
+        address sender;
+        address target;
+        uint256 value;
+        uint256 gasLimit;
+        bytes data;
+    }
+}
+    
+function proveWithdrawalTransaction(
+        Types.WithdrawalTransaction memory _tx,
+        uint256 _l2OutputIndex,
+        Types.OutputRootProof calldata _outputRootProof,
+        bytes[] calldata _withdrawalProof
+) external whenNotPaused {
+   // ..
+}
+```
+其中参数：
+- `_tx` L2 withdraw 交易。注意这里是不包含 L2 交易签名的。也就是说 L1 上并未验证 L2 交易的签名。因此如果 proposer 伪造了 output root，并且未受挑战，那么是可以提走任何人锁定的资金的。
+- `_l2OutputIndex` L2 output root 的 index，根据这个 index 从 L2OutputOracle 中取出 output root。
+- `_outputRootProof` output root hash 前的内容。包含 stateRoot, messagePasserStorageRoot 等）
+- `_withdrawalProof` storage root 包含 `_tx` hash 的 proof
+
+验证逻辑包括：
+1. 验证 `keccak256(OutputRootProof) == OutputRoot`
+    - OutputRoot 是由 proposer 提交的，此时可以视为可信的。
+    - OutputRootProof 来自用户输入，通过 hash 检查后，则表示 messagePasserStorageRoot 可信。
+2. 验证 messagePasser 合约 storage 的 `sentMessages[withdrawalHash] == 1`
+    - storage key 为 `keccak256(withdrawalHash, 0)`
+    - value 为 0x1
+    - 调用 `SecureMerkleTrie.verifyInclusionProof(key, value, _withdrawalProof, messagePasserStorageRoot)` 验证 storage 的 trie 中是否包含对应的 key, value。
+    - 验证通过说明 L2 上用户确实发起了 withdrawal
+
+Finalize 时调用 `OptimismPortal.finalizeWithdrawalTransaction()` 检查逻辑包括：
+1. withdrawal proof 的时间过了挑战期
+2. withdrawal proof 中使用的 output root 与 L2OutputOracle 中取出 output root 一致（避免 Prove 之后，output root 被 chanllenge 发生变化）
+3. output root 时间也过了挑战期。
+
+完成检查后才会执行 withdrawal tx 中的合约调用，完成最终的提款操作。
+
 # 与以太坊的差异
 
-整体 EVM 等价。[EVM Opcodes 差异](https://docs.optimism.io/chain/differences#opcodes)包括：
+整体 EVM 等价。[EVM Opcodes 差异](https://docs.optimism.io/chain/differences#opcodes) 包括：
 - `COINBASE` 返回 Sequencer's fee wallet，每个区块都不变。
 - `PREVRANDAO` 返回 RANDAO 的伪随机数
 - `ORIGIN`, `CALLER` 如果是由合约触发的 L1 到 L2 的跨链交易，这里返回该合约的 aliased address
@@ -198,7 +255,7 @@ Finalize 交易在挑战期过后发起，调用 `OptimismPortal.finalizeWithdra
 
 OP 当前架构中有如下[特权地址](https://docs.optimism.io/chain/security/privileged-roles)：
 - [Batcher](https://etherscan.io/address/0x6887246668a3b87F54DeB3b94Ba47a6f63F32985) 提交交易打包 rollup
-- [Proposer](https://etherscan.io/address/0x473300df21D047806A082244b417f96b32f13A33) 提交 L2 state roots
+- [Proposer](https://etherscan.io/address/0x473300df21D047806A082244b417f96b32f13A33) 提交 L2 output roots
 - [MintManager](https://optimistic.etherscan.io/address/0x5c4e7ba1e219e47948e6e3f55019a647ba501005) 可以 Mint OP
 - [System Config Owner Safe 5/7](https://etherscan.io/address/0x9BA6e03D8B90dE867373Db8cF1A58d2F7F006b3A#code) 
     - 可配置 OP 在 L1 的系统信息 SystemConfig 
@@ -211,6 +268,8 @@ OP 当前架构中有如下[特权地址](https://docs.optimism.io/chain/securit
 
 # Fault Proof
 
+> 注：目前 2024/02/19 Fault Proof 并未正式上线主网，仅在测试网中使用。主网仍依靠多签进行 output root 检查。
+
 OP Fault Proof 介绍视频 https://youtu.be/nIN5sNc6nQM
 
 OP stack 的 Fault Proof System 被设计成模块化的，可以支持乐观证明，错误证明（ZK Proof）等多种证明模式。系统分为三个模块：
@@ -221,7 +280,7 @@ OP stack 的 Fault Proof System 被设计成模块化的，可以支持乐观证
 
 `DisputeGame` 是用于检查 32 bytes root（此场景下称为 `Claim`）是否有效（true/false）的状态机。`DisputeGame` 本身不包含具体功能，更多的是对 Fault Proof 问题进行一种抽象，以模块化的对外提供统一的接口（`IDisputeGame`）。Dispute game protocol 协议中支持向 `DisputeGameFactory` 注册不同的 `DisputeGame` 以解决不同类型的争议。
 
-`FaultDisputeGame` 是 OP 实现的用于验证程序错误的 `DisputeGame` ，通过检查 `Fault Proof Program` 的 execution trace 来判定 `Claim` 是否有效。`FaultDisputeGame` 设计上可以支持不同的 `Fault Proof Program`。在 OP 场景下，`Fault Proof Program` 是 `Cannon` + `op-program`。进行争议解决时，会通过二分计算 L2 state root 的 execution trace 找到最终出错的指令，并在链上验证这条指令。
+`FaultDisputeGame` 是 OP 实现的用于验证程序错误的 `DisputeGame` ，通过检查 `Fault Proof Program` 的 execution trace 来判定 `Claim` 是否有效。`FaultDisputeGame` 设计上可以支持不同的 `Fault Proof Program`。在 OP 场景下，`Fault Proof Program` 是 `Cannon` + `op-program`。进行争议解决时，会通过二分计算 L2 output root 的 execution trace 找到最终出错的指令，并在链上验证这条指令。
 
 如何进行二分查找：最终的 state root 是 merkle tree 的 root，因此是通过 keccak256 得到的。在链下执行 `op-program` 得到 execution trace 后，将所有计算 keccak256 的中间结果保存下来（Preimage）。可以按照 keccak256 计算的位置分割 trace。如果某个 hash 未在 Preimage 找到，则说明此时计算已经发生错误。如果 hash 可以在 Preimage 中找到，则可进一步检查 Preimage 的 hash。以此二分下去，最终定位到产生错误的指令。
 
