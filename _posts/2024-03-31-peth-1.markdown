@@ -17,7 +17,7 @@ Peth 终于更新到 1.x.x 版本啦
 
 最近把 [peth](https://github.com/lmy375/peth/) 作了一个**大版本升级**，正式迈入 `v1.x.x` 时代。
 
-`peth` 最初只是自用的一些简单代码，为了[代替 seth](https://mp.weixin.qq.com/s?__biz=MzkyNzMyMTE2Mw==)而诞生。 整体功能比较类似于后面出现的 `foundry cast`。初期代码比较混乱，**能跑就行**。不过那时候 peth 还是提供了[许多实用的功能](https://mp.weixin.qq.com/s?__biz=MzkyNzMyMTE2Mw==)的。
+`peth` 最初只是自用的一些简单代码，为了[代替 seth](https://mp.weixin.qq.com/s?__biz=MzkyNzMyMTE2Mw==&mid=2247483672&idx=1&sn=d8e4ea1853434f994b5f43b7882ad3be&chksm=c2289c3cf55f152a447d38c6dfc1ed72397a61456e430fcc980a200d4b188b620f85b15c4a79&token=2059310127&lang=zh_CN#rd)而诞生。 整体功能比较类似于后面出现的 `foundry cast`。初期代码比较混乱，**能跑就行**。不过那时候 peth 还是提供了[许多实用的功能](https://mp.weixin.qq.com/s?__biz=MzkyNzMyMTE2Mw==&mid=2247483679&idx=1&sn=d897e7a3ce6a5acc5b1d99f1688f3d79&chksm=c2289c3bf55f152dbd43cf3fb49be46b1cc083f15b30836ec2ba463b6b074c1cfd3fd02ab6b3&token=2059310127&lang=zh_CN#rd)的。
 
 经过一两年断断续续的更新，peth 集成了更多丰富的功能，最近也将我之前写的其他工具的一部分集成了进来。而其中大部分功能都是我实际工作和研究中有真实的需求才开发的，几乎涵盖了与 EVM 系链的各种交互、分析场景，满足了我大部分作为 web3 安全研究员、web3 开发人员的各种需要。
 
