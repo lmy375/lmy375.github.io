@@ -1,0 +1,259 @@
+---
+lng_pair: id_peth_1
+title: peth v1.0.5 正式发布
+category: tool
+tags: [tool]
+img: ":peth.png"
+date: 2024-03-31 10:00:00 +0800
+
+---
+<!-- outline-start -->
+
+Peth 终于更新到 1.x.x 版本啦
+
+<!-- outline-end -->
+
+# 前言
+
+最近把 [peth](https://github.com/lmy375/peth/) 作了一个**大版本升级**，正式迈入 `v1.x.x` 时代。
+
+`peth` 最初只是自用的一些简单代码，为了[代替 seth](https://mp.weixin.qq.com/s?__biz=MzkyNzMyMTE2Mw==)而诞生。 整体功能比较类似于后面出现的 `foundry cast`。初期代码比较混乱，**能跑就行**。不过那时候 peth 还是提供了[许多实用的功能](https://mp.weixin.qq.com/s?__biz=MzkyNzMyMTE2Mw==)的。
+
+经过一两年断断续续的更新，peth 集成了更多丰富的功能，最近也将我之前写的其他工具的一部分集成了进来。而其中大部分功能都是我实际工作和研究中有真实的需求才开发的，几乎涵盖了与 EVM 系链的各种交互、分析场景，满足了我大部分作为 web3 安全研究员、web3 开发人员的各种需要。
+
+最近将整体项目进行一次整理，重构了之前的一些 shi 山代码。不仅添加了许多新的 command，还优化一些 API，使其容易作为 python library 使用。另一方面完善了中英文文档，配置了自动化发布流程。作为一个开源项目，peth 已经变得越来越**正经**了。
+
+相关 URL：
+- 项目 repo：https://github.com/lmy375/peth
+- 中文文档：https://peth.readthedocs.io/zh-cn/latest/
+- 英文文档：https://peth.readthedocs.io/en/latest/
+- Pypi：https://pypi.org/project/peth/
+
+具体的安装使用，可以参考相关文档。
+
+下面说一些我个人最常用及我觉得比较有意思的一些功能。
+
+# 常用命令
+
+## 打开 Etherscan
+我使用频率最高的功能可能是这个简单的 `url` 命令，其作用是打开浏览器对应地址的 Etherscan 页面，以简化打开 Etherscan，输入地址搜索这样的操作流程。
+
+```
+peth > url 0x388C818CA8B9251b393131C08a736A67ccB19297
+https://etherscan.io/address/0x388C818CA8B9251b393131C08a736A67ccB19297
+```
+## 进行合约调用
+
+这个功能其实是 peth 最初要实现的核心功能。
+
+call 命令允许进行合约调用，对于开源合约会自动获取 ABI，因此只需要提供函数名即可。
+```
+peth > call 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2 balanceOf 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+748362491149045280673
+```
+
+对于未开源合约，允许输入完整的函数签名以进行合约调用。
+```
+peth > call 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2 balanceOf(address)->(uint) 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+748101950687662255047
+```
+
+进一步的，对于一些常见的合约，封装出了对应的 alias 命令，如 `erc20`, `proxy`, `safe`, `pair` 等等。
+
+```
+peth > erc20 0xdAC17F958D2ee523a2206206994597C13D831ec7 
+Name: Tether USD
+Symbol: USDT
+decimals: 6
+totalSupply: 48999156520373530
+
+peth > proxy 0x858646372CC42E1A627fcE94aa7A7033e7CF075A
+0x858646372CC42E1A627fcE94aa7A7033e7CF075A is an ERC-1967 Proxy
+Implementation: 0x5d25eef8cfedaa47d31fe2346726de1c21e342fb StrategyManager
+Admin: 0x8b9566ada63b64d1e1dcf1418b43fd1433b72444 ProxyAdmin
+Beacon: 0x0000000000000000000000000000000000000000 EOA
+ProxyAdmin owner:
+Owner: 0x369e6f597e22eab55ffb173c6d9cd234bd699111 GnosisSafe 1/2
+
+peth > safe 0x369e6f597e22eab55ffb173c6d9cd234bd699111
+Version: 1.3.0
+Policy: 1/2
+Owners:
+  0xa6db1a8c5a981d1536266d2a393c5f8ddb210eaf Timelock
+  0xfea47018d632a77ba579846c840d5706705dc598 GnosisSafe 9/13
+Impl: 0xd9db270c1b5e3bd161e8c8503c55ceabee709552
+
+peth > pair 0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852
+TokenPair: 0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852
+WETH 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2 18
+USDT 0xdac17f958d2ee523a2206206994597c13d831ec7 6
+Reseves: 18603.8263 WETH, 67971743.3326 USDT
+V2 Price:
+1 WETH = 3653.6432 USDT
+1 USDT = 0.0003 WETH
+```
+
+想获取更完整的合约信息则可以用 `contract` 命令，免去了打开 Etherscan 的麻烦。
+```
+peth > contract 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+  SourceCode :   // Copyright (C) 2015, 2016, 2017 Dapphub
+  ABI :  [{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string ...
+  ContractName :         WETH9
+  CompilerVersion :      v0.4.19+commit.c4cbbb05
+  OptimizationUsed :     0
+  Runs :         200
+  ConstructorArguments :         
+  EVMVersion :   Default
+  Library :      
+  LicenseType :  
+  Proxy :        0
+  Implementation :       
+  SwarmSource :  bzzr://deb4c2ccab3c2fdca32ab3f46728389c2fe2c165d5fafa07661e4e004f6c344a
+  === VIEWS ===
+  0x06fdde03 function name() view returns (string) => Wrapped Ether
+  0x18160ddd function totalSupply() view returns (uint256) => 2995376766808380127941716
+  0x313ce567 function decimals() view returns (uint8) => 18
+  0x95d89b41 function symbol() view returns (string) => WETH
+  === OTHERS ===
+  fallback()
+  0x095ea7b3 function approve(address guy, uint256 wad) returns (bool)
+  0x23b872dd function transferFrom(address src, address dst, uint256 wad) returns (bool)
+  0x2e1a7d4d function withdraw(uint256 wad)
+  0x70a08231 function balanceOf(address) view returns (uint256)
+  0xa9059cbb function transfer(address dst, uint256 wad) returns (bool)
+  0xd0e30db0 function deposit() payable
+```
+
+## 交易解码
+
+`4byte` 命令可以查看 selector 对应的函数签名。
+```
+peth > 4byte 0xa9059cbb
+transfer(address,uint256)
+```
+
+进一步的，`abi4byte` 命令通过 peth 内置的一个简单的 EVM disassembler 查找到合约中所有的 push4 指令，再批量反查 4byte 签名（甚至对一些简单的方法进行调用）。这个命令在分析闭源合约时有奇效。
+```
+peth > abi4byte 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+0x06fdde03 name()                string Wrapped Ether
+0x095ea7b3 approve(address,uint256)               
+0x18160ddd totalSupply()                 uint256 2994988845248063744615379 (0x27a36abae5e226bc5a3d3)
+0x23b872dd transferFrom(address,address,uint256)                  
+0x313ce567 decimals()                    uint256 18 (0x12)
+0x70a08231 balanceOf(address)                     
+0x95d89b41 symbol()              string WETH
+0xa9059cbb transfer(address,uint256)                      
+0xd0e30db0 deposit()                     bytes 0x
+0xdd62ed3e allowance(address,address) 
+```
+
+根据 ABI 定义或者 selector 信息，peth 也能提供交易解码功能。
+```
+peth > tx 0xa50588329b3b823f475e174399b21c66e04b3853c534496de58b46d06e8a432c
+From: 0x9b782Dd6355530aba172B0Cb83425EBF7E6dECB0
+To: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+Method: function transfer(address to, uint256 value) returns (bool )
+Arguments:
+     to : 0x468b64f1928208cc2c49b61f34fe515f4ddc59fa
+     value : 250000000
+ERC20 Transfers:
+  USDC(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48) sender->0x468B64f1928208CC2c49b61f34fE515f4ddC59FA 250000000
+```
+针对交易解码，我还实现了一个单独的工具 [txexpl](https://github.com/lmy375/peth/tree/master/peth/tools/txexpl)，允许通过预定义的模板去解析交易内容。
+
+## trace
+
+trace 在分析交易时非常有用。Tenderly 和 Phalcon 都有类似的功能。
+
+peth 也能基于 `debug_traceTransaction` 可以解析出交易的 EVM 指令 trace。指令的粒度会比 Tenderly 和 Phalcon 再细一些。
+
+```
+$ peth --rpc-url http://<your geth rpc with debug api>   
+peth >  trace_tx 0x3e1dde3220f5a4cdda7a0190e0fe36952c893550e84256d003716f9cc49cd83b
+CALL 0x138dbff3ee829429ca4dc2a674cd2231ff8afc0b > 0xdac17f958d2ee523a2206206994597c13d831ec7 transfer()
+  EQ 0x6fdde03 == 0xa9059cbb
+  EQ 0x753c30c == 0xa9059cbb
+  ...
+  SLOAD [0x0] => 0xc6cde7c39eb2f0f0095f41570af89efc2c1ea828
+  CALLER 0x138dbff3ee829429ca4dc2a674cd2231ff8afc0b
+  SHA3 0x000000000000000000000000138dbff3ee829429ca4dc2a674cd2231ff8afc0b0000000000000000000000000000000000000000000000000000000000000006 > 0xe0226a13c41ea23f3e20affcdd11db85d3012a37825847eade8b1b20f198642d
+  SLOAD [0xe0226a13c41ea23f3e20affcdd11db85d3012a37825847eade8b1b20f198642d] => 0x0
+  ...
+```
+
+不过 `debug_traceTransaction` 需要一个开启了 Debug API 的 RPC 节点，可能比较难获取到。
+
+peth 中内置一个简单的 EVM，可以进行模拟执行。这样只需要常规 RPC 即可。当然要解析历史数据的话，还是需要一个 archive 节点。好在免费的 archive 节点还是比较多的。
+
+不过值得说明的是，这个 EVM 只是练手写的，可能有 bug 并且很多地方有简化，对于一些用了某些字节码及预编译合约的交易，这个模拟可能是不正确的。这方面还是用 foundry 靠谱一些。
+```
+peth > evm_trace_tx 0x3e1dde3220f5a4cdda7a0190e0fe36952c893550e84256d003716f9cc49cd83b
+[1-5370]   SLOAD                [0x0] => 0xc6cde7c39eb2f0f0095f41570af89efc2c1ea828                                                 
+[1-5455]   SHA3                 000000000000000000000000138dbff3ee829429ca4dc2a674cd2231ff8afc0b0000000000000000000000000000000000000000000000000000000000000006 => e0226a13c41ea23f3e20affcdd11db85d3012a37825847eade8b1b20f198642d
+[1-5459]   SLOAD                [0xe0226a13c41ea23f3e20affcdd11db85d3012a37825847eade8b1b20f198642d] => 0x0                         
+[1-5487]   SLOAD                [0xa] => 0x0                                                                                        
+[1-9922]   SLOAD                [0x3] => 0x0                                                                                        
+[1-9956]   SLOAD                [0x4] => 0x0                                                                                        
+[1-10057]  SHA3                 000000000000000000000000138dbff3ee829429ca4dc2a674cd2231ff8afc0b0000000000000000000000000000000000000000000000000000000000000002 => ea039209bd83a7f24ceccd7f0e5a5a94de49a961c5a963efbd1a6d088c2849d2
+[1-10058]  SLOAD                [0xea039209bd83a7f24ceccd7f0e5a5a94de49a961c5a963efbd1a6d088c2849d2] => 0x51101b10                  
+[1-10135]  SHA3                 000000000000000000000000138dbff3ee829429ca4dc2a674cd2231ff8afc0b0000000000000000000000000000000000000000000000000000000000000002 => ea039209bd83a7f24ceccd7f0e5a5a94de49a961c5a963efbd1a6d088c2849d2
+[1-10138]  SSTORE               0xdAC17F958D2ee523a2206206994597C13D831ec7[105847515027243004738223111774324159193299488367755976363922685335240752777682] = 0x0
+[1-10206]  SHA3                 0000000000000000000000009dfd543bc87a6e15d1fc126efdf201ac5cc8355c0000000000000000000000000000000000000000000000000000000000000002 => 10e0c52043da30cfc95e2ab36b7a3a506c6e5c45884edf3a773e65cfcb4e1b5f
+[1-10207]  SLOAD                [0x10e0c52043da30cfc95e2ab36b7a3a506c6e5c45884edf3a773e65cfcb4e1b5f] => 0xb2a7bcc9325               
+[1-10284]  SHA3                 0000000000000000000000009dfd543bc87a6e15d1fc126efdf201ac5cc8355c0000000000000000000000000000000000000000000000000000000000000002 => 10e0c52043da30cfc95e2ab36b7a3a506c6e5c45884edf3a773e65cfcb4e1b5f
+[1-10287]  SSTORE               0xdAC17F958D2ee523a2206206994597C13D831ec7[7634139833736913371177489221108128263355955228192439644917754002988222782303] = 0xb2accdcae35
+[1-10748]  LOG3                 log3 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef,0x138dbff3ee829429ca4dc2a674cd2231ff8afc0b,0x9dfd543bc87a6e15d1fc126efdf201ac5cc8355c 0000000000000000000000000000000000000000000000000000000051101b10
+```
+
+# SDK
+
+peth 也可能作为 SDK 来使用，去写一些简单的合约交互脚本，而不需要每次都使用笨重的 hardhat, foundry 了。
+
+```
+In [1]: from peth import Peth
+
+In [2]: p = Peth.get_or_create('ftm')
+
+In [3]: p.signer
+
+In [4]: p.bind_signer('<Your private key>')
+
+In [5]: p.signer
+Out[5]: <eth_account.signers.local.LocalAccount at 0x10491c550>
+
+In [6]: wftm = p.contract('0x21be370d5312f44cb42ce377bc9b8a0cef1a4c83')
+
+In [7]: wftm.name
+Out[7]: Function(function name() view returns (string ))
+
+In [8]: wftm.name()
+Out[8]: 'Wrapped Fantom'
+
+In [9]: wftm.balanceOf(p.signer.address)
+Out[9]: 0
+
+In [10]: wftm.deposit
+Out[10]: Function(function deposit() payable returns (uint256 ))
+
+In [11]: wftm.deposit(value=1)
+Out[11]: 
+AttributeDict({'blockHash': HexBytes('0x00...'),
+    ...
+ 'status': 1,
+ 'transactionHash': HexBytes('0x00...'),
+ 'transactionIndex': 2,
+ 'type': '0x0'})
+
+In [12]: wftm.balanceOf(p.signer.address)
+Out[12]: 1
+```
+
+更多的用法可以直接参考 repo 源码中的 test case 和 console.py
+
+# 尾声
+
+实际上 peth 中功能还有很多，只是很难在一篇文章中全部分介绍了。
+
+读者对更多的内容感兴趣，可直接翻看文档和代码。
+
+如果能 Star, Fork, PR 一键三连，就更好不过了。
