@@ -1,9 +1,9 @@
 ---
 lng_pair: id_solana_6
-title: Sui 实用学习笔记 (6) - 杂项、命令行
-category: solana
-tags: [solana]
-img: ":solana_logo.svg"
+title: Solana 实用学习笔记 (6) - 杂项、命令行
+category: 公链
+tags: [Solana]
+img: ":solana_logo.png"
 date: 2024-08-22 10:00:00 +0800
 
 ---
