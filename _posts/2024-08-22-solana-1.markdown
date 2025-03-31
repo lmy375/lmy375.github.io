@@ -1,0 +1,48 @@
+---
+lng_pair: id_solana_1
+title: Sui 实用学习笔记 (1) - 参考资料
+category: solana
+tags: [solana]
+img: ":solana_log.svg"
+date: 2024-08-22 10:00:00 +0800
+
+---
+<!-- outline-start -->
+
+Solana 的参考文章、项目等
+
+<!-- outline-end -->
+
+# 参考
+工具：
+- 交易解码 https://naiba-archived.github.io/solana-transaction-decoder/
+
+文档、文章
+- solana 文档 https://solana.com/docs/intro/quick-start
+- solana cli 文档 https://docs.solanalabs.com/cli/
+- 【必读】solana cookbook https://solanacookbook.com/#contributing
+- anchor 官网 https://www.anchor-lang.com/
+- anchor 简短介绍 https://solana.com/developers/guides/getstarted/intro-to-anchor
+- anchor book https://book.anchor-lang.com/
+- RPC https://solana.com/docs/rpc/http
+- SPL 文档 https://spl.solana.com/
+- anchor 不能检查的安全点 https://www.zellic.io/blog/the-vulnerabilities-youll-write-with-anchor/
+- [slowmist: solana 智能合约安全最佳实践]( https://github.com/slowmist/solana-smart-contract-security-best-practices/blob/main/README_CN.md)
+
+代码：
+- RBPF 虚拟机实现 https://github.com/solana-labs/rbpf
+- solana sdk program 基础库 https://github.com/solana-labs/solana/tree/master/sdk/program
+- solana program examples，含 anchor 和 native https://github.com/solana-developers/program-examples
+- anchor 源码 https://github.com/coral-xyz/anchor
+- anchor examples https://github.com/solana-developers/anchor-examples
+- solana-security-txt https://github.com/neodyme-labs/solana-security-txt
+
+
+参考项目：
+-  https://github.com/solana-labs/perpetuals
+-  https://github.com/drift-labs/protocol-v2
+-  https://github.com/Kamino-Finance/klend
+-  https://github.com/Squads-Protocol/v4
+-  https://github.com/Squads-Protocol/squads-mpl
+-  https://github.com/wormhole-foundation/wormhole/tree/main/solana
+

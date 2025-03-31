@@ -1,0 +1,146 @@
+---
+lng_pair: id_solana_3
+title: Sui 实用学习笔记 (3) - Native SDK 合约开发
+category: solana
+tags: [solana]
+img: ":solana_log.svg"
+date: 2024-08-22 10:00:00 +0800
+
+---
+<!-- outline-start -->
+
+合约开发，Native SDK
+
+<!-- outline-end -->
+# 开发
+
+每个 Program 实际是 `fn entrypoint(input: *mut u8) -> u64` 程序。输入内容是 bytes。内容是序列化的 program id, accounts, instruction data。
+
+Program 与链交互的的两种途径：
+1. 内存读写 accounts 的 data
+2. 调用 syscall：主要是获取一些全局状态、打印 log、进行密码学操作、以及发起 CPI
+
+[Solana Program Crate](https://github.com/solana-labs/solana/tree/master/sdk/program) （导入名称为 sonala_program ）提供一些 syscall 的封装，以及对 accounts data 的序列化反序列化函数。
+
+基于 Solana Program Crate，实现了 [Solana Program Library](https://github.com/solana-labs/solana-program-library), 类似于 OpenZepplin，实现了一些 Token, Swap, Stake, Governance 等常见的应用。相当于官方合约。
+
+[Anchor](https://github.com/coral-xyz/anchor) 是抽象级别更好的开发框架。通过一些宏封装了 Solana Program 的代码。同时也包装 Solana Program Library 了中的一些常用实现。Anchor 通过规范的 IDL 可以生成 CPI 调用 / Client 调用的代码。实现类似 Solidity 中 ABI 文件的效果。
+
+## Solana Program (Native SDK)
+
+代码：https://github.com/solana-labs/solana/tree/master/sdk/program
+
+提供了 `entrypoint!` 宏完成一些反序列化工作，将程序入口变成如下定义：
+
+```rust
+entrypoint!(process_instruction);
+
+pub fn process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    msg!("Hello world");
+    Ok(())
+}
+```
+
+其中 accounts 是 AccountInfo 的数组。每个 AccountInfo 定义如下：
+
+```rust
+/// Account information
+#[derive(Clone)]
+#[repr(C)]
+pub struct AccountInfo<'a> {
+    /// Public key of the account
+    pub key: &'a Pubkey, 
+    /// The lamports in the account.  Modifiable by programs.
+    pub lamports: Rc<RefCell<&'a mut u64>>,
+    /// The data held in this account.  Modifiable by programs.
+    pub data: Rc<RefCell<&'a mut [u8]>>,
+    /// Program that owns this account
+    pub owner: &'a Pubkey,
+    /// The epoch at which this account will next owe rent
+    pub rent_epoch: Epoch,
+    /// Was the transaction signed by this account's public key?
+    pub is_signer: bool,
+    /// Is the account writable?
+    pub is_writable: bool,
+    /// This account's data contains a loaded program (and is now read-only)
+    pub executable: bool,
+}
+```
+
+其中 `pubkey, is_signer, is_writable` 是构造交易时用户传入的。其他信息是虚拟机执行时补充的内容。这部分用户传入的 Account 数据也常称为 AccountMeta，在 CPI 时会经常使用。
+```rust
+#[repr(C)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct AccountMeta {
+    /// An account's public key.
+    pub pubkey: Pubkey,
+    /// True if an `Instruction` requires a `Transaction` signature matching `pubkey`.
+    pub is_signer: bool,
+    /// True if the account data or metadata may be mutated during program execution.
+    pub is_writable: bool,
+}
+```
+
+AccountInfo 是 Solana 合约最常见的交互对象。常用方法：
+- signer_key()： 签名则返回 pubkey，未签名则返回 None
+- unsigned_key()： 直接返回 pubkey
+- lamports()：返回余额
+- data_len(): 返回数据的长度
+- data_is_empty()：数据是否为空
+- try_borrow_data()：获取 data 的引用
+- try_borrow_mut_data() ：获取 data 的可变引用
+- realloc()：重新分配 data 大小（本质是修改 len，指针不变）
+- assign()：修改 owner program id
+- deserialize_data()： 反序列化数据
+- serialize_data()：序列化数据
+
+[Pubkey](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/sdk/program/src/pubkey.rs) 实际就是 `[u8; 32]`，也封装了一些常用方法：
+- create_with_seed 计算 PDA 地址
+- find_program_address 计算 PDA 地址及 bump
+
+CPI 通过 invoke, [invoke_signed](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/sdk/program/src/program.rs#L247-L248) 等方法。
+```rust
+pub fn invoke(instruction: &Instruction, account_infos: &[AccountInfo]) -> ProgramResult {
+    invoke_signed(instruction, account_infos, &[])
+}
+
+pub fn invoke_signed(
+    instruction: &Instruction,
+    account_infos: &[AccountInfo],
+    signers_seeds: &[&[&[u8]]],
+) -> ProgramResult;
+
+// error 定义见 program_error.rs
+pub type ProgramResult = ResultGeneric<(), ProgramError>;
+```
+
+set_return_data, get_return_data 设置和获取返回值（最大不超过 1k）
+```rust
+pub fn set_return_data(data: &[u8]);
+pub fn get_return_data() -> Option<(Pubkey, Vec<u8>)>;
+```
+
+Instruction 定义如下：
+```rs
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct Instruction {
+    /// Pubkey of the program that executes this instruction.
+    #[wasm_bindgen(skip)]
+    pub program_id: Pubkey,
+    /// Metadata describing accounts that should be passed to the program.
+    #[wasm_bindgen(skip)]
+    pub accounts: Vec<AccountMeta>,
+    /// Opaque data passed to the program for its own interpretation.
+    #[wasm_bindgen(skip)]
+    pub data: Vec<u8>,
+}
+```
+
+[system_instruction.rs](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/sdk/program/src/system_instruction.rs) 中实现了许多构造 System Program Instruction 的工具函数。SPL 库中也通常会通过 [instruction.rs](https://github.com/solana-labs/solana-program-library/blob/master/token/program-2022/src/instruction.rs) 文件提供构造 Instruction 的函数。
+
+

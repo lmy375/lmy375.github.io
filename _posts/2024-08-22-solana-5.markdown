@@ -1,0 +1,361 @@
+---
+lng_pair: id_solana_5
+title: Sui 实用学习笔记 (5) - Client SDK
+category: solana
+tags: [solana]
+img: ":solana_log.svg"
+date: 2024-08-22 10:00:00 +0800
+
+---
+<!-- outline-start -->
+
+Client SDK 的使用
+
+<!-- outline-end -->
+
+# Client SDK
+
+Native
+- 官方 Rust https://solana.com/docs/clients/rust
+- 官方 web3.js https://github.com/anza-xyz/solana-web3.js
+- Go https://github.com/gagliardetto/solana-go
+- Python https://github.com/michaelhly/solana-py
+- Python https://github.com/SuperteamDAO/solathon
+
+
+Anchor
+- 官方 ts https://github.com/coral-xyz/anchor/tree/master/ts/packages/anchor
+- Python https://github.com/kevinheavey/anchorpy
+    - 文档 kevinheavey.github.io/anchorpy/
+- Go （看起好久没维护了）https://github.com/gagliardetto/anchor-go
+- Go（上面的 fork，持续在更新）https://github.com/fragmetric-labs/solana-anchor-go
+
+
+# @solana/web3.js@next
+
+代码：https://github.com/anza-xyz/solana-web3.js
+示例： https://github.com/anza-xyz/solana-web3.js/tree/main/examples
+
+这个版本为了实现 Tree-Shakability，将原本面向对象的实现改成面向过程的实现。几乎每种操作都有一个单独的方法（尤其是 transaction 构建那部分），所需要的参数由方法传入。
+
+RPC 访问
+```js
+import { createSolanaRpc, Signature, Base64EncodedWireTransaction, address } from "@solana/web3.js";
+
+const main = async () => {
+    const rpc = createSolanaRpc("https://api.mainnet-beta.solana.com");
+    const blockHeight = await rpc.getBlockHeight().send();
+    console.log(blockHeight);
+
+    const slot = await rpc.getSlot().send();
+    console.log(slot);
+
+    const block = await rpc.getBlock(321807014n, { 
+        maxSupportedTransactionVersion: 0
+    }).send();
+    // console.log(block);
+
+    const tx = block?.transactions[0]!;
+    // console.log(tx.transaction.message.instructions);
+
+    const txid = tx.transaction.signatures[0] as unknown as Signature
+    console.log(txid);
+
+    const status = await rpc.getSignatureStatuses([txid], { 
+        searchTransactionHistory: true
+    }).send();
+    console.log(status)
+
+    const tx2 = await rpc.getTransaction(txid, { 
+        maxSupportedTransactionVersion: 0,
+        encoding: "base64"
+    }).send();
+    console.log(tx2);
+
+    const base64Tx = tx2?.transaction[0] as unknown as Base64EncodedWireTransaction;
+
+    const txid2 = await rpc.sendTransaction(base64Tx, { 
+        encoding: "base64",
+        skipPreflight: true // 标识为 true 之后可以重发，不会报错。去掉该标识会进行 simulate。
+    }).send()
+    console.log(txid2);
+
+    const result = await rpc.simulateTransaction(base64Tx, { 
+        encoding: "base64",
+        replaceRecentBlockhash: true // 不标记模拟会返回 BlockhashNotFound，标记后会在新区块上模拟
+    }).send()
+    // console.log(result);
+
+    const accData = await rpc.getAccountInfo(address('BPFLoader2111111111111111111111111111111111'),
+    {
+        encoding: "jsonParsed"
+    }).send();
+    console.log(accData);
+}
+
+main().catch(error => {
+  console.error("Error occurred:", error);
+});
+```
+
+创建交易相关
+
+注意构建 instruction 的库在这里 https://github.com/solana-program
+
+```js
+import {
+    createSolanaRpc,
+    address,
+    generateKeyPair,
+    createTransactionMessage,
+    getAddressFromPublicKey,
+    setTransactionMessageFeePayer,
+    signTransaction,
+    createSignerFromKeyPair,
+    appendTransactionMessageInstruction,
+    compileTransaction,
+    getBase64EncodedWireTransaction,
+    setTransactionMessageLifetimeUsingBlockhash,
+    pipe,
+    lamports,
+    appendTransactionMessageInstructions,
+    AccountRole,
+    Address,
+    getProgramDerivedAddress,
+    getAddressEncoder
+} from "@solana/web3.js";
+
+import {
+    getTransferSolInstruction
+} from "@solana-program/system"
+
+const main = async () => {
+
+    const rpc = createSolanaRpc("https://api.mainnet-beta.solana.com");
+    const { value: blockhash } = await rpc.getLatestBlockhash().send();
+    console.log(blockhash);
+
+    const feePayer = await generateKeyPair();
+    // console.log(feePayer);
+
+    const feePayerAddress = await getAddressFromPublicKey(feePayer.publicKey);
+    console.log(feePayerAddress);
+
+    const signer = await createSignerFromKeyPair(feePayer);
+
+    const ix = getTransferSolInstruction({
+        amount: lamports(12345678n),
+        destination: feePayerAddress,
+        source: signer,
+    });
+    console.log(ix);
+
+    const ix2 = {
+        accounts: [{
+            address: feePayerAddress,
+            role: AccountRole.WRITABLE_SIGNER,
+            signer: signer
+        },
+        {
+            address: feePayerAddress,
+            role: AccountRole.WRITABLE
+        }],
+        programAddress: address("11111111111111111111111111111111"),
+        data: Uint8Array.from([2, 0, 0, 0, 78, 97, 188, 0, 0, 0, 0, 0])
+    }
+
+    const tx = pipe(
+        createTransactionMessage({ version: 0 }),
+        tx => setTransactionMessageFeePayer(feePayerAddress, tx),
+        tx => setTransactionMessageLifetimeUsingBlockhash(blockhash, tx),
+        tx => appendTransactionMessageInstructions([ix, ix2], tx),
+    );
+    console.log(tx)
+
+    const rawTx = compileTransaction(tx);
+
+    // // Attempting to sign the transaction message without a lifetime will throw a type error
+    const signedTransaction = await signTransaction([feePayer], rawTx);
+    console.log(signedTransaction.signatures);
+
+    const b64tx = getBase64EncodedWireTransaction(signedTransaction);
+    console.log(b64tx);
+
+    const result = await rpc.simulateTransaction(b64tx, {
+        encoding: "base64"
+    }).send();
+    console.log(result);
+
+    const programAddress = address('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+    const [pda, bump] = await getProgramDerivedAddress({
+        programAddress,
+        seeds: [
+          getAddressEncoder().encode(feePayerAddress),
+          getAddressEncoder().encode(address('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')),
+          getAddressEncoder().encode(feePayerAddress),
+        ],
+      });
+    console.log(pda, bump);
+}
+
+main().catch(error => {
+    console.error("Error occurred:", error);
+});
+```
+
+# python
+
+```
+pip install anchorpy solana solders
+```
+- solders 基础库，由 rust sdk 编译得到 python binding
+- solana 即 solana-py，基于 solders 封装 SPL 等
+- anchorpy 支持 anchor IDL 相关方法，anchor js 版本的移植，用法十分类似。
+
+solders + solana 基础库构建交易
+```python
+from spl.token.client import Token
+from spl.token.instructions import initialize_mint, InitializeMintParams
+from spl.token.constants import TOKEN_PROGRAM_ID
+
+from solana.transaction import Transaction
+from solana.rpc.api import Client
+
+from solders.system_program import create_account, CreateAccountParams
+from solders.instruction import Instruction
+from solders.keypair import Keypair
+from solders.message import Message, MessageV0
+from solders.transaction import VersionedTransaction
+from solders.pubkey import Pubkey
+
+signer = Keypair()
+pubkey = Pubkey.from_string(str(signer.pubkey()))
+
+ix = create_account(CreateAccountParams(
+    from_pubkey=pubkey,
+    to_pubkey=pubkey,
+    lamports=10000000,
+    space=165,
+    owner=TOKEN_PROGRAM_ID
+))
+
+ix2 = initialize_mint(InitializeMintParams(
+    decimals=6,
+    freeze_authority=pubkey,
+    mint=pubkey,
+    mint_authority=pubkey,
+    program_id=TOKEN_PROGRAM_ID,
+))
+
+# ix = Instruction(
+#     Pubkey.from_string('ComputeBudget111111111111111111111111111111'),
+#     b'\x02\xf4\x01\x00\x00',
+#     []
+# )
+
+client = Client("https://api.mainnet-beta.solana.com/")
+
+recent_blockhash = client.get_latest_blockhash().value.blockhash
+msg = Message.new_with_blockhash([ix, ix2], pubkey, recent_blockhash)
+print(msg)
+
+tx = VersionedTransaction(msg, [signer])
+print(tx)
+
+r = client.simulate_transaction(tx)
+print(r)
+```
+
+链上加载 IDL，并构建交易
+```py
+import asyncio
+from solana.rpc.async_api import AsyncClient
+from solders.pubkey import Pubkey
+from anchorpy import Program, Provider, Wallet, Context
+
+async def main():
+    client = AsyncClient("https://api.mainnet-beta.solana.com/")
+    blockhash = (await client.get_latest_blockhash()).value.blockhash
+
+    signer = Wallet.local()
+    pubkey = signer.public_key
+
+    provider = Provider(client, signer)
+
+    # load the Serum Swap Program (not the Serum dex itself).
+    program = await Program.at(
+        "22Y43yTVxuUkoRKdm9thyRhQ3SdgQS7c7kB6UNCiaczD", provider
+    )
+    print(program.idl.name)  # swap
+
+    ctx=Context(accounts={
+        "open_orders": pubkey,
+        "authority": pubkey,
+        "market": pubkey,
+        "dex_program": pubkey,
+        "rent": pubkey
+        }, 
+        signers=[signer.payer]
+    )
+
+    ix = program.instruction['init_account'](ctx=ctx)
+    print(ix)
+
+    tx = program.transaction['init_account'](payer=signer.payer, blockhash=blockhash, ctx=ctx)
+    print(tx)
+    print(bytes(tx).hex())
+
+    # await program.simulate['init_account'](ctx=ctx)
+    # await program.rpc['init_account'](ctx=ctx)
+
+    await program.close()
+
+asyncio.run(main())
+```
+
+读取 account 
+```
+import asyncio
+from solana.rpc.async_api import AsyncClient
+from solders.pubkey import Pubkey
+from anchorpy import Program, Provider, Wallet, Context, Idl
+
+
+async def main():
+    client = AsyncClient("https://api.mainnet-beta.solana.com/")
+    blockhash = (await client.get_latest_blockhash()).value.blockhash
+
+    OFT = Pubkey.from_string("CATLZdvDfQcK99YntCaeDs8o342HcXRP1R5t4yTT5dUw")
+    OFT_STORE = Pubkey.from_string('62Jqyqrbe6i6zhUEtDUCYR2qfnH6PcqKqaVLg7saMJ7N')
+
+    signer = Wallet.local()
+    pubkey = signer.public_key
+
+    provider = Provider(client, signer)
+
+    data = open('solana-lz-oapp/target/idl/oft.json').read()
+    idl = Idl.from_json(data)
+
+    program = Program(idl, OFT, provider)
+
+    account_data = await program.account['OFTStore'].fetch(OFT_STORE)
+    
+    print(account_data)
+
+    await program.close()
+
+asyncio.run(main())
+```
+
+# IDL
+
+- IDL Spec https://github.com/solana-idl-foundation/solana-idl-spec/tree/main/spec/src/types
+- IDL JS 代码实现：
+    - https://github.com/coral-xyz/anchor/blob/master/ts/packages/anchor/src/idl.ts
+    - https://github.com/coral-xyz/anchor/blob/master/ts/packages/anchor/src/coder/borsh/idl.ts
+
+
+discriminator 生成规则：
+- 方法 `sha256("global:initialize")[:8]`
+- 账户 `sha256("account:NewAccount")[:8]`
+

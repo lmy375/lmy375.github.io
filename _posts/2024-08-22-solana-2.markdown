@@ -1,0 +1,294 @@
+---
+lng_pair: id_solana_2
+title: Sui 实用学习笔记 (2) - 基本概念与底层
+category: solana
+tags: [solana]
+img: ":solana_log.svg"
+date: 2024-08-22 10:00:00 +0800
+
+---
+<!-- outline-start -->
+
+Account, Program, System Program, SPL, 交易等等
+
+<!-- outline-end -->
+
+# 基本概念
+
+## Account
+
+Account 在 Solana 中用于保存数据及 SOL 资产。保存数据需要有足够的租金。地址是公钥的 base58 。
+
+Programs 是无状态的 Account。状态数据保存在另外的 Account 中。Account 的 owner 都是 Programs。普通公私钥的 account 的 owner 是 System Program （11111111111111111111111111111111）。无 data 的 Account 可以更换 owner
+
+## System Program 
+
+System Program 等属于 [Native Program](https://docs.solanalabs.com/runtime/programs)。代码在[这里](https://github.com/solana-labs/solana/blob/master/programs) System Program 支持的 [instruction](https://docs.rs/solana-program/1.18.18/solana_program/system_instruction/enum.SystemInstruction.html) 主要有
+- CreateAccount 创建 account
+- Assign 给 account 设置 program
+- Transfer 转账
+- Allocate 为 account 分配空间
+- NonceAccount 相关指令
+
+旧版代码在[这里](https://github.com/solana-labs/solana/blob/master/programs/system/src/system_processor.rs)，新代码在[这里](https://github.com/solana-program/system/blob/main/program/src/processor.rs)，但似乎没写完
+
+以下分析基于旧版
+- create_account：
+    - 待创建的 account lamports > 0 直接报错 `Create Account: account {:?} already in use`
+    - 依次调用 allocate + assign + transfer 
+    - 注：不检查 rent mini balance
+- allocate
+    - 需要 account 签名
+    - 如果 data 不为空或者 owner 不是 system 则报错 `Allocate: account {:?} already in use`
+    - space 大于 MAX_PERMITTED_DATA_LENGTH 则报错。
+    - 更新 data length
+- assign
+    - owner 与旧 owner 相同则直接返回
+    - 需要 account 签名
+- transfer
+    - 需要 from 签名，不需要 to 签名
+    - 需要 from data 为空，否则报错 `Transfer: from must not carry data`
+    - 需要 transfer lamports < from 的 lamports
+    - from 减少 lamports, to 增加 lamports。操作检查溢出。
+- TODO: nonce 相关操作
+
+关于 [close_account](https://solana.com/el/developers/cookbook/accounts/close-account)：close 不需要 system account，因为此时 account 的 owner 已经是 program，只要 program 修改 lamports 清空 data 即可。
+
+## 交易
+
+交易中包含多个 Instruction，每个 Instruction 调用一个 Program。交易整体保持原子性，所有 Instruction 均成功或者失败。
+
+Instruction 包含：
+- program_id 调用的目标程序
+- accounts 需要读写的 account，所有状态转移都在这里，因此交易可以很大程度的并行处理。
+- instruction_data 程序输入 bytes
+
+交易含
+- accounts 交易中 instructions 读写的地址（最多 32 个，使用 ATL 的 v0 交易则最多 64）
+- instructions 根据 index 从上述 accounts 数组中指定 instruction 的 accounts 及 program_id。
+- recent blockhash 最多 150 个区块， ~1m 19s，超时则交易失效。
+- [signatures](https://solana.com/docs/terminology#signature) 可有多个。至少有一个用来支付 gas。每个交易中的第一个签名，作为交易的 txid 。所以 Solana 相关文档中经常用 Signature 一词代指交易 ID。
+
+[Address Lookup Tables, ALT](https://solana.com/docs/advanced/lookup-tables) 每个交易最多支持 32 个地址输入。使用 ALT 后，会在链上创建一个地址列表，并使用地址列表索引地址。实现每个交易最多访问 64 个地址。使用 ALT 需要使用 V0 版本交易。旧交易类型记为 legacy 
+
+交易中最大加载的 account 数据[不超过 64M](https://github.com/anza-xyz/agave/blob/b7bbe36918f23d98e2e73502e3c4cba78d395ba9/program-runtime/src/compute_budget_processor.rs#L23)
+
+Compute unit, CU 类似 EVM 的 gas，根据 Solana 的操作不同计算。[参考](https://solana.com/docs/core/fees#compute-budget)
+
+各种操作消耗的 cost 见[代码](https://github.com/solana-labs/solana/blob/master/program-runtime/src/compute_budget.rs#L135)
+
+## 部署合约
+
+参考：https://solana.com/docs/programs/deploying
+
+合约账户/程序账户即 Programs 是有 executable 标志的 account，且 owner 是 BPFLoaderUpgradeab1e11111111111111111111111
+
+示例： https://explorer.solana.com/address/8bV5cKEokrfbJpefNBWFUwigrrahDwo2MnGeRaAMLiBx?cluster=devnet
+```
+solana account 8bV5cKEokrfbJpefNBWFUwigrrahDwo2MnGeRaAMLiBx
+
+Public Key: 8bV5cKEokrfbJpefNBWFUwigrrahDwo2MnGeRaAMLiBx
+Balance: 0.00114144 SOL
+Owner: BPFLoaderUpgradeab1e11111111111111111111111
+Executable: true
+Rent Epoch: 18446744073709551615
+Length: 36 (0x24) bytes
+0000:   02 00 00 00  44 aa ca b8  11 d8 36 44  c0 12 ca e0   ....D.....6D....
+0010:   35 32 d8 51  cc 61 dd 36  cf 0e 08 a2  92 4a 96 6a   52.Q.a.6.....J.j
+0020:   e1 c7 47 7c   
+```
+
+Executable Data Account （或 Program data account） 在 5d3mpBCnRuepPKvdqXGhvdE9vDGQKCJh779auDQQMaXV， Owner 同样是 BPFLoader。这个 account 保存 upgrade_authority 和合约的 bytecode。
+
+合约的部署是通过调用 BPFLoader 的指令完成的。需要发很多交易写到 Buffer account 中，完成后将这些代码复制到 Program Data Account。并创建最终的 Program Account，将其标志为 executable。
+
+Program Id 是一个随机生成的 key pair。
+```
+solana address  -k ./target/deploy/tic_tac_toe-keypair.json 
+```
+
+## Token
+
+参考：
+- 文档 https://solana.com/docs/core/tokens
+- 旧版本代码 https://github.com/solana-labs/solana-program-library/blob/master/token/program/
+- 2022 代码 https://github.com/solana-labs/solana-program-library/tree/master/token/program-2022
+
+Token 是一种 SPL (Solana Program Library) 即官方程序。旧版本为 Token Program，新版本为 Token Extensions Program (Token2022).
+
+每种 Token 即是一个 Token Program 的 Mint Account。其中保存 Token [基本信息](https://github.com/solana-labs/solana-program-library/blob/master/token/program/src/state.rs#L18) mint_authority, supply, decimals 等。
+。
+
+name, symbol 等信息由外挂的元数据 account 保存。通常使用 [Metaplex metadata](https://developers.metaplex.com/token-metadata) 的标准。Metaplex metadata program 源码在[这里](https://github.com/metaplex-foundation/mpl-token-metadata/tree/main/programs/token-metadata/program) 要求 mint authority 才能创建并更新对应的 metadata。可以直接通过该 program 去创建 token mint 并绑定 metadata，已经创建的 mint 也可以用这个去绑定。Metaplex metadata program 兼容了 token 和 token-2022，对于 token-2022 的情况，对将 token-2022 的 metadata account 也指向自己的 PDA。
+
+Token Account 则保存用户余额信息。[Associated Token Account, ATA](https://spl.solana.com/associated-token-account)，可根据 Mint Account 和用户 pubkey 生成，可作为用户默认的 Token Account。
+
+Token Account 和 Mint Account 的 owner 都是 Token Program。
+
+SPL 普通使用原生 rust 进行开发。
+- lib.rs 为模块主体入口
+- entrypoint.rs 为程序入口
+- instruction.rs 为 instruction 定义。
+- processor.rs 为 instruction 处理过程。process 函数为主函数，返回 ProgramResult。
+- state.rs 定义 account 的数据结构。
+
+旧版本核心的 instruction 包括：
+- InitializeMint 创建 Mint Account（就是通常意义的 SPL Token），指定 decimals 等元数据。指定 mint_authority 和 freeze_authority
+- InitializeAccount 创建一个 Token Account。指定 mint（即 Token 类型）, owner（Token 所有者地址），close_authority（可以回收这个 account 的地址），delegate（ delegate 的值），delegated_amount（delegate 的数量）
+- Transfer 进行转账
+- Approve 设置 delegate 和 delegated_amount
+- Revoke 清空 delegate 和 delegated_amount
+- SetAuthority 设置  Token Account 或 Mint Account 中的各种 authority
+- MintTo 铸造给某个账户。只有 mint_authority 能调用。
+- Burn 只能 burn 掉自己的余额
+- CloseAccount 关闭账户。
+- AmountToUiAmount, UiAmountToAmount decimals 换算方法。
+- 注：所有 authority 鉴权在 Program 中都是支持多签的。
+
+Token Program 2022 版本增加了各种 extension
+- PermanentDelegate 永久代理 transfer/burn
+- NonTransferable 不可转账
+- ImmutableOwner owner 不能改变
+- MintCloseAuthority 关闭 Mint（即 Token）的权限
+- TransferFee 转账手续费
+
+Associated Token Account 即ATA。由于 Token 的余额保存在 TokenAccount 中。那么给否个地址转账，则要求对方已经创建过 Token Account。ATA 相当于指定了规则，通过 ATA Program PDA 的形式，为每种 Mint Account 的每个用户创建默认的 Token Account。
+
+核心代码在[process_create_associated_token_account](https://github.com/solana-labs/solana-program-library/blob/69257a6959b4abac239235092679e8044fb18d39/associated-token-account/program/src/processor.rs#L66-L67)
+
+使用 `[wallet account, spl token program, token mint, bump]` 作为 seed 创建账户。并通过 spl_token_2022 调用 initialize_immutable_owner ，并调用 initialize_account3 初始化 token，并设置 owner 为 wallet account。（对于 Token Program，实际并没有 immutable_owner 功能，只是[虚拟的调用](https://github.com/solana-program/token/blob/main/program/src/processor.rs#L801)一下。
+
+
+# 底层
+
+## syscall
+
+- solana syscall 实现定义 https://github.com/solana-labs/solana/blob/master/sdk/program/src/syscalls/definitions.rs
+- solana syscall 实现 https://github.com/solana-labs/solana/blob/master/programs/bpf_loader/src/syscalls/mod.rs
+
+主要有以下几类：
+- log 类，log bytes, u64, CU, pubkey
+- PDA 相关：create_program_address, try_find_program_address
+- crypto 相关：sha256, keccak256, secp256k1_recover, blake3, curve_validate_point 等
+- 取 sys_var ： clock, fee, rent, epoch_rewards 等
+- 内存操作：memcpy, memmove, memset, memcmp
+- 调用相关：invoke_signed_c, invoke_signed_rust, set_return_data, get_return_data, log_data, get_stack_height, get_processed_sibling_instruction, remaining_compute_units
+
+## Program 执行过程
+
+1. 解析交易，得到输入的数据、调用的 Program
+2. 构造 [SyscallContext](https://github.com/solana-labs/solana/blob/master/program-runtime/src/invoke_context.rs#L141) 启动 [BPF Loader](https://github.com/solana-labs/solana/blob/master/program-runtime/src/invoke_context.rs#L438)， [运行 VM](https://github.com/solana-labs/solana/blob/master/programs/bpf_loader/src/lib.rs#L1303) （详见 **下面 交易执行时的调用栈**）
+3. 执行 Program， 程序自身的入口在 [entrypoint.rs](https://github.com/solana-labs/solana/blob/master/sdk/program/src/entrypoint.rs#L125)
+4. 从输入数据[deserialize 得到](https://github.com/solana-labs/solana/blob/master/sdk/program/src/entrypoint.rs#L277) program_id, accounts, instruction_data。
+5. 执行 Program 中用户编写的代码。
+
+注：
+- VM 并没有提供一些系统调用去修改 account 的数据，整个虚拟机调用栈将 account 的数据作为参数输入进来，Program 直接修改直接修改 account 数据对应的内存。因此 Program 内直接将数据写回 account info 即完成了数据更新。account 本身 data 的读写控制，是通过 Ebpf VM 的 Memory mapping 处理。写入不可以写内存会报 AccessViolation。
+- 这样所有合约调用可进行的状态修改，都要通过交易输入的 accounts 列表来进行。这样所有交易的读写数据可以完全通过输入来判定。利于交易的并行处理。
+
+从开发角度上来看，编写的代码主要功能就是：
+1. 从 account 中读取信息（通常用来做一些检查）
+2. 向 account 中写入信息
+
+程序自身是无状态的。伪代码效果如下：
+```
+account = Account() # 创建的账户
+solana_program(account, ..) # 执行合约开发者编写的部分。
+account # 修改后的账户
+```
+
+交易执行时的调用栈：
+- [Bank::process_transaction_batch](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/runtime/src/bank.rs#L5800)
+- [Bank::load_execute_and_commit_transactions](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/runtime/src/bank.rs#L5671)
+- [Bank::load_and_execute_transactions](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/runtime/src/bank.rs#L4582)
+- [TransactionBatchProcessor::load_and_execute_sanitized_transactions](https://github.com/solana-labs/solana/blob/master/svm/src/transaction_processor.rs#L197)
+- [TransactionBatchProcessor:execute_loaded_transaction](https://github.com/solana-labs/solana/blob/master/svm/src/transaction_processor.rs#L567)
+- [MessageProcessor::process_message](https://github.com/solana-labs/solana/blob/master/program-runtime/src/message_processor.rs#L45)
+- [InvokeContext::process_instruction](https://github.com/solana-labs/solana/blob/master/program-runtime/src/invoke_context.rs#L418)
+- [InvokeContext::process_executable_chain](https://github.com/solana-labs/solana/blob/master/program-runtime/src/invoke_context.rs#L438)
+- [EbpfVm::invoke_function](https://github.com/solana-labs/rbpf/blob/c72113b6abc6bff3d4d6538ea2d844a309cee213/src/vm.rs#L431) 调用 entrypoint
+
+CPI 调用的调用栈：
+- [InvokeContext::native_invoke](https://github.com/solana-labs/solana/blob/master/program-runtime/src/invoke_context.rs#L276)
+- [InvokeContext::process_instruction](https://github.com/solana-labs/solana/blob/master/program-runtime/src/invoke_context.rs#L418)
+- 下同
+
+VM 执行的调用过程（普通用户编写的合约走这里）
+- BPFLoader 的 [Entrypoint](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/programs/bpf_loader/src/lib.rs#L352-L353) 会调用 process_instruction_inner
+- [process_instruction_inner](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/programs/bpf_loader/src/lib.rs#L368)
+- [execute](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/programs/bpf_loader/src/lib.rs#L1303)
+    - [serialization::serialize_parameters](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/programs/bpf_loader/src/serialization.rs#L190) 序列化参数，account 会直接映射真实的内存地址。同时根据账户属性，设置内存页的属性。详见 [push_account_data_region](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/programs/bpf_loader/src/serialization.rs#L131-L132)
+    - create_vm 根据前面设置的 regions 设置 memory mapping。
+    - vm.execute_program 执行 VM
+    - 执行如果发生 EbpfError::AccessViolation，则按 accounts mapping 定位 account，根据 account 类型判断原因：
+        - InstructionError::ExecutableDataModified 尝试写 executable account
+        - InstructionError::ExternalAccountDataModified 尝试写非 is_writable account
+        - InstructionError::ReadonlyDataModified 写只读账户
+
+System 程序的入口代码[在这里](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/programs/system/src/system_processor.rs#L300-L301) 由 instruction_data 判断是 CreateAccount, CreateAccountWithSeed, Assign, Transfer 等等执行。
+
+
+## SDK
+
+solana sdk program 基础库 https://github.com/solana-labs/solana/tree/master/sdk/program
+
+native rust 合约开发依赖此库。anchor 基于此库提供了更多宏的封装。
+
+所有 Program 的入口是定义形如：
+```rust
+#[macro_export]
+macro_rules! entrypoint {
+    ($process_instruction:ident) => {
+        /// # Safety
+        #[no_mangle]
+        pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
+            let (program_id, accounts, instruction_data) =
+                unsafe { $crate::entrypoint::deserialize(input) };
+            match $process_instruction(&program_id, &accounts, &instruction_data) {
+                Ok(()) => $crate::entrypoint::SUCCESS,
+                Err(error) => error.into(),
+            }
+        }
+        $crate::custom_heap_default!();
+        $crate::custom_panic_default!();
+    };
+}
+```
+[entrypoint](https://github.com/solana-labs/solana/blob/master/sdk/program/src/entrypoint.rs#L125) 宏先从 input 中 [deserialize](https://github.com/solana-labs/solana/blob/master/sdk/program/src/entrypoint.rs#L277) 得到 program_id, accounts, instruction_data。
+
+其中 account.data 指向 input 中的一个指针。该指针指向真实的 Account data 区域。
+```rust
+let data = Rc::new(RefCell::new({
+    from_raw_parts_mut(input.add(offset), data_len)
+}));
+```
+如果 account 不属于当前 Program，则直接写入会产生  EbpfError::AccessViolation 最终导致交易失败。
+
+
+## account 分配空间
+
+allocate：SystemProgram 交互为 account 分配空间。[system_instruction::allocate](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/sdk/program/src/system_instruction.rs#L1101-L1102) 
+```rs
+pub fn allocate(pubkey: &Pubkey, space: u64) -> Instruction {
+    let account_metas = vec![AccountMeta::new(*pubkey, true)];
+    Instruction::new_with_bincode(
+        system_program::id(),
+        &SystemInstruction::Allocate { space },
+        account_metas,
+    )
+}
+```
+在合约内调用形如：
+```rs
+invoke_signed(
+    &system_instruction::allocate(new_pda_account.key, space as u64),
+    &[new_pda_account.clone(), system_program.clone()],
+    &[new_pda_signer_seeds],
+)?;
+```
+
+SystemProgram 内代码在[这里](https://github.com/solana-labs/solana/blob/master/programs/system/src/system_processor.rs#L70) ，直接调用 `account.set_data_length(space)`。 注意交易需要 account 的签名。
+
+进一步的 create_account 实际上就是 allcate + assign + transfer 。这几步也均需要对应 account 的签名。换言之，这些创建与修改均需要知道 account 的私钥，或者程序中使用 PDA 签名。
+
+[AccountInfo.realloc](https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/sdk/program/src/account_info.rs#L147-L148) 用于在程序内部分配空间（最大不超过 10k）实现是直接修改 account 对应 data 的长度。

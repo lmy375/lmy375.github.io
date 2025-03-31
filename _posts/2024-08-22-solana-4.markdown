@@ -1,0 +1,294 @@
+---
+lng_pair: id_solana_4
+title: Sui 实用学习笔记 (4) - Anchor 合约开发
+category: solana
+tags: [solana]
+img: ":solana_log.svg"
+date: 2024-08-22 10:00:00 +0800
+
+---
+<!-- outline-start -->
+
+Anchor 合约开发
+
+<!-- outline-end -->
+## Anchor
+
+Anchor
+- 【必读】[Anchor Rust 文档](https://docs.rs/anchor-lang)。由于 Anchor 框架大量使用了宏，从代码上看难直观看出宏实际的意义。官方文档介绍的更清楚
+- [封装 Native SDK 的代码](https://github.com/coral-xyz/anchor/blob/679c1306f39f529bebf72b4f4d2bfa4a54b633c4/lang)
+- [封装 SPL 的代码](https://github.com/coral-xyz/anchor/blob/679c1306f39f529bebf72b4f4d2bfa4a54b633c4/spl)
+
+
+宏代码：
+- [syn](https://github.com/coral-xyz/anchor/blob/679c1306f39f529bebf72b4f4d2bfa4a54b633c4/lang/syn) 文件夹中实现了 anchor 主要的对 accounts 和 program 处理的宏。
+- 程序主体结构生成在[这里]([ret](https://github.com/coral-xyz/anchor/blob/679c1306f39f529bebf72b4f4d2bfa4a54b633c4/lang/syn/src/codegen/program/mod.rs#L25))
+- 每种指令处理代码里[这里](https://github.com/coral-xyz/anchor/blob/679c1306f39f529bebf72b4f4d2bfa4a54b633c4/lang/syn/src/codegen/program/handlers.rs#L23-L24)
+- [Accounts 宏](https://github.com/coral-xyz/anchor/blob/679c1306f39f529bebf72b4f4d2bfa4a54b633c4/lang/syn/src/lib.rs#L467) 对 AccountInfo 数组有更好的抽象。并根据 AccountInfo 用途不同。定义了不同的 Account 类型。
+
+
+[Account 的类型](https://docs.rs/anchor-lang/latest/anchor_lang/accounts/index.html)
+- Account 会根据定义类型进行反序列化，并检查传入的 Account 的 owner 是否是定义的 Program 的 id
+- UncheckedAccount 不对传入的 account 作检查。
+- Program 检查 executable == true 且 key == 声明的 program id
+- Signer 检查 is_signer == true
+
+Accounts Derive 宏支持各种 [Attribute](https://docs.rs/anchor-lang/latest/anchor_lang/derive.Accounts.html)
+- instruction：需要和 instruction data 的定义顺序一致（可省略后半部分不需要的参数）。
+- account：最常用的，自动对 account 添加一些检查（这些检查都在生成的 `anchor_lang::Accounts::try_accounts` 中实现）
+    - `signer`：检查 is_signer
+    - `mut`: 检查 `account.to_account_info().is_writable == true`
+    - `init, payer = <signer_account>, space = <num_bytes>` 创建 account，并根据 `space` 保证 rent exempt（由 payer 支付）。 初始化时会设置 8 字节 discriminator。该类型天然是 mut 的。当指定 `seeds` 时则会创建 PDA，自动寻找 bump。
+        - 创建 account 时的细节：如果待初始化 lamports 为 0，则 payer 调用 `create_account` 创建 account。如果 > 0，则根据 `minimum_balance`，按需 `transfer` 补充 lamports，再 `allocate + assign`。因为 `create_account` 只能用于 lamports == 0 的情况。另外 allocate 时在 system program 中会检查 data 为空，且 owner 是 system。因此重复 init 时会报错。容易产生 DoS。避免这种情况可以用 init_if_needed。
+    - `init_if_needed, payer = <signer_account>, space = <num_bytes>`，当 account owner 不是 system 的时候，则不再进行 init 的流程。直接反序列化。 init，如果已经存在，则检查创建参数等是否一致。
+    - `seeds = <seeds>, bump, seeds::program = <expr>` 检查是声明 program 的 PDA。指定 `bump` 时，则检查 account 是否与 `Pubkey::create_program_address` 一致。不指定时则使用 `Pubkey::find_program_address` 查找，并将查到的 bump 保存在 `ctx.bumps` 中 
+    - `has_one = <target_account>` 检查 account 中 target_account 同名属性是否是声明的地址， `account.<target_account> = <target_account>.key()` 最常用于 account data 内自定义的一些权限检查等。
+    - `address = <expr>` 检查 pubkey 是否是声明的值
+    - `owner` 检查 account 的 owner 是否是声明的 program id
+    - `executable` 检查 executable
+    - `rent_exempt = skip | enforce` 跳过过强制检查 rent exemption
+    - `zero` 检查 discriminator 是否为 0，通常用于外部创建的 account
+    - `close = <target_account>` 关闭账户并转账 lamports 给 target_account
+    - `constraint = <expr>` 编写表达式，根据表达式内容进行检查。
+    - `realloc = <space>, realloc::payer = <target>, realloc::zero = <bool>` 自动 realloc 空间。在 try_accounts 中，遇到 realloc 修饰的 account。检查 data 大小，计算 rent。如果小于 data len，则 payer 转账；如果大于 data len，则减小 lamports 并增加 payer 的 lamports。最后调用 [AccountInfo::realloc](https://github.com/solana-labs/solana/blob/master/sdk/program/src/account_info.rs#L148)（本质是修改 data length，增大会根据 zero_init 决定是否覆盖 0，缩小则不会处理） 重新分配。之后再进入用户函数（因此**计算 size 的表达式要以用户函数调用前的状态**）
+    - `token::mint = <target_account>, token::authority = <target_account>` 检查 TokenAccount 的 token mint 信息，如果标记 init 也可根据这个信息创建一个 TokenAccount。
+    - `mint::authority = <target_account>` 检查 Mint 的 authority
+    - `associated_token::mint = <target_account>, associated_token::authority = <target_account>, associated_token::token_program = <target_account>` 检查 ATA 信息
+    - 注：属性定义时可以使用 `@` 添加自定义的 error 
+
+
+
+程序代码：
+
+[lib.rs](https://github.com/coral-xyz/anchor/blob/679c1306f39f529bebf72b4f4d2bfa4a54b633c4/lang/src/lib.rs) 主文件：
+- prelude: 导入 anchor 常用模块及 solana_program 中常用模块。
+- require, require_eq, require_keys_eq 等宏
+
+主程序使用时如下：
+```rs
+#[program]
+mod hello_anchor {
+    use super::*;
+    pub fn foo(ctx: Context<Bar>, data: u64) -> Result<()> {
+        Ok(())
+    }
+}
+```
+其中 Context 类型定义如下：
+```rs
+pub struct Context<'a, 'b, 'c, 'info, T: Bumps> {
+    /// Currently executing program id.
+    pub program_id: &'a Pubkey,
+    /// Deserialized accounts.
+    pub accounts: &'b mut T,
+    /// Remaining accounts given but not deserialized or validated.
+    /// Be very careful when using this directly.
+    pub remaining_accounts: &'c [AccountInfo<'info>],
+    /// Bump seeds found during constraint validation. This is provided as a
+    /// convenience so that handlers don't have to recalculate bump seeds or
+    /// pass them in as arguments.
+    /// Type is the bumps struct generated by #[derive(Accounts)]
+    pub bumps: T::Bumps,
+}
+```
+
+Native SDK 中从 AccountInfo 数组中按顺序加载每个 account。通常使用时也逐个进行检查与反序列化。
+
+[Account](https://github.com/coral-xyz/anchor/blob/679c1306f39f529bebf72b4f4d2bfa4a54b633c4/lang/src/accounts/account.rs) 是 Anchor 中对 Native SDK 的 AccountInfo 的封装。Account 通过范型指定了数据结构，会自动将 AccountInfo 中的 data 进行序列化与反序列化操作。
+```rs
+#[derive(Clone)]
+pub struct Account<'info, T: AccountSerialize + AccountDeserialize + Clone> {
+    account: T,
+    info: &'info AccountInfo<'info>,
+}
+```
+Account 中实现了 `exit()` 方法，自动将 account 中的修改序列化到 info 中。
+
+## 宏展开
+
+使用如下命令可以展开所有宏，将整个工程输出到一个文件中。
+```
+cargo install cargo-expand
+cargo expand
+```
+使用此方法可以直观的看出 anchor 生成的代码。
+
+新版 anchor 可以直接使用
+```
+anchor expand
+```
+
+展开如下程序：
+```
+use anchor_lang::prelude::*;
+
+declare_id!("8bV5cKEokrfbJpefNBWFUwigrrahDwo2MnGeRaAMLiBx");
+
+#[program]
+mod hello_anchor {
+    use super::*;
+
+    pub fn foo_bar(ctx: Context<Foo>, _data: u64) -> Result<()> {
+        msg!("hello {:?}", ctx.accounts.acc.data);
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+#[instruction(data:u64)]
+pub struct Foo<'info> {
+    #[account(
+        seeds=[b"A"],
+        bump
+    )]
+    pub acc: Account<'info, Bar>,
+}
+
+#[account]
+pub struct Bar {
+    data: u64,
+}
+
+```
+
+全局会定义 program ID
+```
+/// The static program ID
+pub static ID: anchor_lang::solana_program::pubkey::Pubkey = anchor_lang::solana_program::pubkey::Pubkey::new_from_array([...]);
+/// Const version of `ID`
+pub const ID_CONST: anchor_lang::solana_program::pubkey::Pubkey = anchor_lang::solana_program::pubkey::Pubkey::new_from_array([...]);
+```
+
+程序入口处如下：
+```
+#[no_mangle]
+pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
+    let (program_id, accounts, instruction_data) = unsafe {
+        ::solana_program::entrypoint::deserialize(input)
+    };
+    match entry(&program_id, &accounts, &instruction_data) {
+        Ok(()) => ::solana_program::entrypoint::SUCCESS,
+        Err(error) => error.into(),
+    }
+}
+```
+
+会检查传入的 program id 是否与静态 id 一致。ix data 长度小于 8 也会返回错误。
+```
+pub fn entry<'info>(
+    program_id: &Pubkey,
+    accounts: &'info [AccountInfo<'info>],
+    data: &[u8],
+) -> anchor_lang::solana_program::entrypoint::ProgramResult {
+    try_entry(program_id, accounts, data)
+        .map_err(|e| {
+            e.log();
+            e.into()
+        })
+}
+fn try_entry<'info>(
+    program_id: &Pubkey,
+    accounts: &'info [AccountInfo<'info>],
+    data: &[u8],
+) -> anchor_lang::Result<()> {
+    if *program_id != ID {
+        return Err(anchor_lang::error::ErrorCode::DeclaredProgramIdMismatch.into());
+    }
+    if data.len() < 8 {
+        return Err(anchor_lang::error::ErrorCode::InstructionMissing.into());
+    }
+    dispatch(program_id, accounts, data)
+}
+```
+
+Instruction data 前 8 字节作为 sig hash，用来判断执行的 ix。如 `foo_bar` 函数表示的指令，则使用 `instruction::FooBar::DISCRIMINATOR` 变量匹配。其值通过 `Sha256("<namespace>:<rust-identifier>")[..8]` 计算。
+
+dispatch 函数代码如下：
+
+```
+fn dispatch<'info>(
+    program_id: &Pubkey,
+    accounts: &'info [AccountInfo<'info>],
+    data: &[u8],
+) -> anchor_lang::Result<()> {
+    let mut ix_data: &[u8] = data;
+    let sighash: [u8; 8] = {
+        let mut sighash: [u8; 8] = [0; 8];
+        sighash.copy_from_slice(&ix_data[..8]);
+        ix_data = &ix_data[8..];
+        sighash
+    };
+    use anchor_lang::Discriminator;
+    match sighash {
+        instruction::FooBar::DISCRIMINATOR => {
+            __private::__global::foo_bar(program_id, accounts, ix_data)
+        }
+        anchor_lang::idl::IDL_IX_TAG_LE => {
+            __private::__idl::__idl_dispatch(program_id, accounts, &ix_data)
+        }
+        anchor_lang::event::EVENT_IX_TAG_LE => {
+            Err(anchor_lang::error::ErrorCode::EventInstructionStub.into())
+        }
+        _ => Err(anchor_lang::error::ErrorCode::InstructionFallbackNotFound.into()),
+    }
+}
+```
+
+foo_bar 函数如下：
+```
+mod __private {
+    pub mod __idl {
+        // 生成了大量 IDL 指令相关的代码，进行 account create, resize, close 等等的指令。
+    }
+    pub mod __global {
+        use super::*;
+        #[inline(never)]
+        pub fn foo_bar<'info>(
+            __program_id: &Pubkey,
+            __accounts: &'info [AccountInfo<'info>],
+            __ix_data: &[u8],
+        ) -> anchor_lang::Result<()> {
+            // 先打印 log
+            ::solana_program::log::sol_log("Instruction: FooBar");
+            
+            // 反序列化 ix_data
+            let ix = instruction::FooBar::deserialize(&mut &__ix_data[..])
+                .map_err(|_| {
+                    anchor_lang::error::ErrorCode::InstructionDidNotDeserialize
+                })?;
+            let instruction::FooBar { _data } = ix;
+            let mut __bumps = <Foo as anchor_lang::Bumps>::Bumps::default();
+            let mut __reallocs = std::collections::BTreeSet::new();
+            let mut __remaining_accounts: &[AccountInfo] = __accounts;
+            
+            // 调用多次 anchor_lang::Accounts::try_accounts
+            // 反序列化 accounts
+            // 设置 bump
+            // 检查约束
+            let mut __accounts = Foo::try_accounts(
+                __program_id,
+                &mut __remaining_accounts,
+                __ix_data,
+                &mut __bumps,
+                &mut __reallocs,
+            )?;
+            
+            // 调用用户编写的指令函数
+            let result = hello_anchor::foo_bar(
+                anchor_lang::context::Context::new(
+                    __program_id,
+                    &mut __accounts,
+                    __remaining_accounts,
+                    __bumps,
+                ),
+                _data,
+            )?;
+            
+            // 对所有 account 依次调用 anchor_lang::AccountsExit::exit(
+            // 回写 accounts
+            __accounts.exit(__program_id)
+        }
+    }
+}
+```
+

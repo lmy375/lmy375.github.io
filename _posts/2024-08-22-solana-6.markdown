@@ -1,0 +1,94 @@
+---
+lng_pair: id_solana_6
+title: Sui 实用学习笔记 (6) - 杂项、命令行
+category: solana
+tags: [solana]
+img: ":solana_log.svg"
+date: 2024-08-22 10:00:00 +0800
+
+---
+<!-- outline-start -->
+
+杂项，常用命令，区块链浏览器 API
+
+<!-- outline-end -->
+
+
+# 杂项
+
+[Cross Program Invocation (CPI)](https://solana.com/docs/core/cpi) 跨程序调用。目前最大调用深度为 5.
+
+[程序中的 stack 深度](https://solana.com/docs/programs/limitations#call-stack-depth-object-object-error)最大为 64
+
+[租金 Rent](https://solana.com/docs/core/fees#rent) 所有账户需要保存资金来保存数据。account close 时可以回收。[参考](https://docs.solanalabs.com/implemented-proposals/rent)。如果租金超过 2 年，则免租。低于则持续收取。通常大部分账户都会保证自己处理免租（Rent exempt）状态。
+
+1nc1nerator11111111111111111111111111111111 用于 burn lamports 的特殊地址。
+
+[getLatestBlockhash RPC](https://solana.com/docs/rpc/http/getlatestblockhash) 的 [commitment](https://solana.com/docs/rpc#configuring-state-commitment ) 参数设置为 `finalized` 可以查确认的区块。
+
+[getSignatureStatuses](https://solana.com/docs/rpc/http/getsignaturestatuses) 直接查询交易的确认信息。
+
+# 命令行
+
+```sh
+# 安装 https://docs.solanalabs.com/cli/install
+sh -c "$(curl -sSfL https://release.solana.com/stable/install)"
+solana-install update
+
+# 替换默认的 RPC 地址
+solana config set --url https://api.devnet.solana.com
+
+# 创建 key pair
+solana-keygen new --no-bip39-passphrase  -o 123.json
+
+# 查看当前账户
+# 保存在 ~/.config/solana/id.json 32 字节私钥 + 32 字节公钥
+solana address -v
+
+# 查看当前余额
+solana balance 
+
+# 查看 account
+# -u m =>  --url mainnet-beta
+solana account -u m HLF7gaiXdPFbnChZhGLpwKQzyGRcqfzYeo3AxM22fbVN
+
+# 领 devnet 空投
+solana airdrop 5
+
+# 部署
+solana program deploy -u d --program-id keys/program.json target/deploy/suniswap.so
+
+# 查看交易
+solana confirm -v 5fYkBHYYGQQ78A9osPV2b4XYSQu1SEGs7E7E1ySMMYQGPSNw2Y3MYVh85kiLD38hrmZuTZL16HmSn3dJeYFP2jW8
+
+
+# 更新 anchor 到最新版
+avm list
+avm update
+```
+
+# 区块链浏览器 API
+
+Sol scan API https://pro-api.solscan.io/pro-api-docs/v2.0/reference/v2-account-transfer  但相比于页面上展示的内容不够全
+
+查看 account 信息 https://api-v2.solscan.io/v2/account?address=JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+获取 IDL https://api-v2.solscan.io/v2/account/anchor_idl?address=JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+获取 verify 状态  https://verify.osec.io/status/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+
+注意需要添加 origin header 去请求。
+```
+curl 'https://api-v2.solscan.io/v2/account?address=JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4' \
+  -H 'Accept-Language: en,zh-CN;q=0.9,zh;q=0.8' \
+  -H 'Origin: https://solscan.io' \
+  -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36' \
+  -H 'accept: application/json, text/plain, */*' 
+```
+
+Solana.fm API
+https://docs.solana.fm/reference/solanafm-api-overview
+
+在 https://github.com/solana-fm/explorer-kit 中找到的
+获取 IDL https://api.solana.fm/v0/programs/meta/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+
+
+
